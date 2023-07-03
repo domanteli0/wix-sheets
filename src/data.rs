@@ -1,20 +1,21 @@
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct RawData {
-    submition_url: Option<String>, // TODO: this should not be optional
+    #[serde(rename = "submissionUrl")]
+    submission_url: String,
     sheets: Vec<RawSheet>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub struct RawSheet {
     id: String,
-    data: Vec<Vec<CellData>>,
+    data: Vec<Vec<RawCellData>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(untagged)]
-pub enum CellData {
+pub enum RawCellData {
     String(String),
     Int(i64),
     Float(f64),
