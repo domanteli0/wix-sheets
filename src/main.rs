@@ -1,4 +1,5 @@
 pub mod data;
+pub mod Data; // rust-analyser acts funky without this line
 pub mod sheets;
 
 use std::error::Error;
