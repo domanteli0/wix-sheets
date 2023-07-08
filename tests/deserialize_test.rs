@@ -1,14 +1,14 @@
-use wix_sheets::data::{RawCellData::*, RawData};
+use wix_sheets::data::{RawCellData::*, RawData, RawSheet};
 
 #[test]
 fn parses() {
     let str = include_str!("example.json");
-    let data: Result<RawData, _> = serde_json::from_str(str);
-    assert!(data.is_ok());
+    let mut data: RawData = serde_json::from_str(str).unwrap();
+
     assert_eq!(
-        data.unwrap()
+        data
             .sheets
-            .into_iter()
+            .iter()
             .find(|s| s.id == "sheet-12")
             .unwrap()
             .data,

@@ -9,6 +9,7 @@ pub mod sheets;
 use std::{error::Error, any::Any};
 
 use crate::{data::RawData, sheets::{Expr, num::Num}};
+use crate::sheets::Sheet;
 use serde_json;
 use reqwest;
 const HUB_URL_GET: &'static str = 
@@ -20,6 +21,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let data_raw: RawData = serde_json::from_str(&data_str)?;
     println!("{:?}", data_raw);
+
+    let data: Vec<Sheet> = data_raw.sheets.into_iter().map(Into::<_>::into).collect();
+    println!("{:?}", data);
 
     Ok(())
 }

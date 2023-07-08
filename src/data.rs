@@ -13,17 +13,6 @@ pub struct RawSheet {
     pub data: Vec<Vec<RawCellData>>,
 }
 
-impl RawSheet {
-    pub fn resolve_consts(&mut self) {
-        self.data
-            .iter_mut()
-            .for_each(|row| {
-                row.iter_mut()
-                    .for_each(RawCellData::resolve_const)
-            })
-    }
-}
-
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum RawCellData {

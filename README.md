@@ -13,5 +13,7 @@
 * 19:34 - some type modelling
 
 07-07 - 07-08
-* 18:54 - 19:10 & 22:17 - @now | implemented parsing of formula cells
+* 18:54 - 19:10 & 22:17 - implemented parsing of formula cells
 
+07-09:
+* 0:33 - finished parser implementation
