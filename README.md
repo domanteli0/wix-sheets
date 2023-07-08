@@ -11,3 +11,7 @@
 
 07-05
 * 19:34 - some type modelling
+
+07-07 - 07-08
+* 18:54 - 19:10 & 22:17 - @now | implemented parsing of formula cells
+
