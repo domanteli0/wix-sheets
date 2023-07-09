@@ -21,8 +21,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data_raw: RawData = serde_json::from_str(&data_str)?;
     println!("{:?}", data_raw);
 
-    let data: Vec<Sheet> = data_raw.sheets.into_iter().map(Into::<_>::into).collect();
+    let mut data: Vec<Sheet> = data_raw.sheets.into_iter().map(Into::<_>::into).collect();
     println!("{:?}", data);
+
+    for s in &mut data {
+        s.resolve_refs();
+    }
+
+    println!("{:#?}", data);
 
     Ok(())
 }

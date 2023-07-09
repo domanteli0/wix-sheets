@@ -75,6 +75,8 @@ pub enum CellError {
     InvalidArgCount(usize, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
+    #[error("$ERROR: Referenced cell(s) have errors {0:?}")]
+    RefError(Vec<(Position, CellError)>)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,27 +89,78 @@ pub struct OpInfo {
     pub args: Vec<Expr>,
 }
 
-pub type Form = Box<dyn Fn(&OpInfo) -> Expr>;
+pub type Form = Box<dyn Fn(&mut Sheet, &OpInfo) -> Expr>;
 
 impl Sheet {
     fn get_form_map<'a>() -> HashMap<&'a str, Form> {
+        // let get_args = |op_info: &OpInfo| -> Result<(), CellError> {
+
+        //     todo!();
+        // };
+
+        // let expect_type = |op_info: &OpInfo| -> Result<(), CellError> {
+
+        //     todo!()
+        // };
+
         // Add one or more values together.
-        let sum: Form = Box::new(|info| {
+        let sum: Form = Box::new(|sheet, info| {
             if info.args.len() < 1 {
                 return CellError::InvalidArgCount(1, 0).into();
             }
 
-            let add = |num: Num, expr: &Expr, pos: usize| -> Result<Num, _> {
-                if !expr.is_value() {
-                    todo!("implement resolve in forms")
-                }
-                match expr.clone().unwrap_value().downcast_ref::<Num>() {
+            let val_to_num_or_err =
+                |val: &Box<dyn Value>, num: Num, pos: usize| -> Result<Num, CellError> {
+                match val.clone().downcast_ref::<Num>() {
                     Some(n) => Ok((*n + num).into()),
-                    None => Err(CellError::TypeMismatch("Num", pos)),
+                    None => Err(CellError::TypeMismatch("Num", pos + 1)),
                 }
             };
 
-            let res_fn = || -> Result<_, _> {
+            let mut add = |num: Num, expr: &Expr, pos: usize| -> Result<Num, CellError> {
+                match expr {
+                    Expr::Value(v) => {
+                        val_to_num_or_err(v, num, pos)
+                    }
+                    Expr::Ref(r) => {
+                        let expr: Expr = sheet
+                            .resolve_on_pos(*r)
+                            .map(|e| e)
+                            .unwrap_or(
+                                &Expr::Err(CellError::InvalidReference)
+                            )
+                            .clone();
+                        
+                        // if resolve_on_pos implementation is correct
+                        // `expr` should be either an `Err` or `Value`
+                        let val = match expr {
+                            Expr::Value(v) => v,
+                            Expr::Err(e) => {
+                                Err(CellError::RefError(vec![(
+                                    (0, 0).into(),
+                                    e
+                                )]))?;
+                                unreachable!()
+                            },
+                            _ => unreachable!(),
+                        };
+
+                        match val.downcast_ref::<Num>() {
+                            Some(n) => Ok((*n + num).into()),
+                            None => Err(CellError::TypeMismatch("Num", pos + 1)),
+                        }
+                    } 
+                    Expr::Form(_) => todo!(),
+                    Expr::Err(e) => 
+                        // TODO: Actually use ref position for `RefError` 
+                        Err(CellError::RefError(vec![((0,0).into(), e.clone())])),
+                }
+                // if !expr.is_value() {
+                //     todo!("implement resolve in forms")
+                // }
+            };
+
+            let mut res_fn = || -> Result<_, _> {
                 let mut res = Ok(Num::I(0));
                 for (pos, expr) in info.args.iter().enumerate() {
                     let res_ = res?;
@@ -129,36 +182,46 @@ impl Sheet {
 
     // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
     pub fn resolve_refs(&mut self) {
-        let mut iy = 0;
-        while iy < self.cells.len() {
-            let mut jx = 0;
-            while jx < self.cells[iy].len() {
+        // let mut iy = 0;
+        // while iy < self.cells.len() {
+        //     let mut jx = 0;
+        //     while jx < self.cells[iy].len() {
+
+        //     }
+        //     iy += 1;
+        // }
+
+        for iy in 0..self.cells.len() {
+            for jx in 0..self.cells[iy].len() {
                 self.resolve_on_pos(dbg!((jx, iy).into()));
-                jx += 1;
             }
-            iy += 1;
         }
     }
 
     fn resolve_on_pos(&mut self, pos: Position) -> Option<&Expr> {
         let expr = self.get(pos)?;
 
-        let new_expr: Expr = match expr {
+        let new_expr: Expr = match expr.clone() {
             Expr::Ref(r) => self
-                .resolve_on_pos(*r)
-                .map(|e| e.clone())
-                .unwrap_or(CellError::InvalidReference.into()),
+                .resolve_on_pos(r)
+                .map(|e| e)
+                .unwrap_or(&Expr::Err(CellError::InvalidReference))
+                .clone(),
             Expr::Form(op_info) => {
                 // TODO: move this somewhere else as not to re-create
                 // the whole hashmap everytime
-                let map = Self::get_form_map();
+                let mut map = Self::get_form_map();
 
-                map.get(&op_info.name[..])
-                    .map(|o| o(&op_info))
-                    .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
-            }
-            Expr::Value(v) => v.clone().into(),
-            Expr::Err(e) => e.clone().into(),
+                map.get_mut(&op_info.name[..])
+                    .map(|o| o(self, &op_info))
+                    .unwrap_or(
+                        CellError::NoOpFound(
+                            op_info.name.clone()
+                        ).into()
+                    )
+            },
+            Expr::Value(v) => v.into(),
+            Expr::Err(e) => Expr::Err(e),
         };
 
         self.set_unchecked(pos, new_expr);

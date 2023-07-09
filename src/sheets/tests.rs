@@ -68,7 +68,65 @@ fn parse_then_resolve_ops_with_consts() {
             id: "sheet-test".to_owned(),
             cells: vec![vec![Num::I(3).into()]]
         }
+    );
+
+
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=SUM(1, \"Hi\")".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![vec![
+                CellError::TypeMismatch("Num", 2).into()
+            ]]
+        }
     )
+}
+
+#[test]
+fn parse_then_resolve_forms_with_refs() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=SUM(A2, B2)".to_owned()),
+            ],
+            vec![
+                RawCellData::Int(6),
+                RawCellData::String("=1".to_owned()),
+            ]
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![vec![
+                    Num::I(7).into()
+                ],
+                vec![
+                    Num::I(6).into(),
+                    Num::I(1).into(),
+                ]
+            ]
+        }
+    );
+
 
 }
 
