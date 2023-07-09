@@ -1,34 +1,46 @@
 #![allow(incomplete_features)]
 
 pub mod num;
+pub mod parse;
 pub mod tests;
 pub mod value;
 
-use std::{fmt::Debug};
+use std::{fmt::Debug, collections::HashMap};
 use thiserror::Error;
 // use serde::{Serialize, Serializer};
+use derive_more::{From, IsVariant, Unwrap};
 
-use derive_more::From;
-use nom::{
-    branch::alt,
-    bytes::{
-        complete::take_while,
-        complete::{tag, take_while_m_n},
-    },
-    character::complete::digit1,
-    combinator::{map},
-    error::VerboseError,
-    multi::many0,
-    sequence::{pair, tuple},
-};
+use crate::data::{RawSheet, RawCellData};
+use self::{num::Num, value::Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
-    id: String,
-    cells: Vec<Vec<Expr>>,
+    pub id: String,
+    pub cells: Vec<Vec<Expr>>,
 }
 
-#[derive(Debug, Clone, From, PartialEq)]
+impl Sheet {
+    fn get(&self, index: impl Into<Position>) -> Option<&Expr> {
+        let index = index.into();
+        self.cells
+            .get(index.y)
+            .and_then(|row: &Vec<_>| row.get(index.x))
+    }
+
+    fn get_mut(&mut self, index: impl Into<Position>) -> Option<&mut Expr> {
+        let index = index.into();
+        self.cells
+            .get_mut(index.y)
+            .and_then(|row: &mut Vec<_>| row.get_mut(index.x))
+    }
+
+    fn set_unchecked(&mut self, index: impl Into<Position>, expr: Expr) {
+        let index = index.into();
+        self.cells[index.y][index.x] = expr;
+    }
+}
+
+#[derive(Debug, Clone, From, PartialEq, IsVariant, Unwrap)]
 pub enum Expr {
     Value(Box<dyn Value>),
     Ref(Position),
@@ -38,16 +50,27 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
-    pub x: char,
-    pub y: u32,
+    pub x: usize,
+    pub y: usize,
+}
+
+impl From<(usize, usize)> for Position {
+    fn from(value: (usize, usize)) -> Self {
+        Self {
+            x: value.0,
+            y: value.1,
+        }
+    }
 }
 
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 pub enum CellError {
-    #[error("$ERROR: TODO")]
+    #[error("$ERROR: Malformed formula")]
     ParseError,
     #[error("#ERROR: Incompatible types")]
     TypeMismatch,
+    #[error("#ERROR: This cell references an empty field")]
+    InvalidReference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,19 +83,64 @@ pub struct OpInfo {
     pub args: Vec<Expr>,
 }
 
-// Once RFC2515 (https://github.com/rust-lang/rust/issues/63063) lands
-// this could be turned into:
-// `impl Fn(&str) -> Result<Box<dyn Value>, E>`
-type CellParser<E> = Box<dyn Fn(&str) -> VerboseResult<&str, Expr, E>>;
-use crate::data::*;
+pub type Form = Box<dyn Fn(OpInfo) -> Expr>;
 
-use self::{num::Num, value::Value};
+impl Sheet {
+
+    // fn get_form_map() -> HashMap<&'static str, Form> {
+
+    //     let map = HashMap::from([
+    //         ("SUM", |info| {
+    //             let get_args = |op_info,| {
+
+    //             }
+    //         })
+    //     ]);
+
+    //     map
+    // }
+
+    // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
+    pub fn resolve_refs(&mut self) {
+
+        let mut iy = 0;
+        while iy < self.cells.len() {
+            let mut jx = 0;
+            while jx < self.cells[iy].len() {
+                self.resolve_on_pos(dbg!((jx, iy).into()));
+                jx += 1;
+            }
+            iy += 1;
+        }
+    }
+
+    fn resolve_on_pos(&mut self, pos: Position) -> Option<&Expr> {
+        let expr = self
+            .get(pos)?;
+
+        let new_expr: Expr = match expr {
+            Expr::Ref(r) => self
+                .resolve_on_pos(*r)
+                .map(|e| e.clone())
+                .unwrap_or(CellError::InvalidReference.into()),
+            Expr::Form(_) => todo!(),
+            Expr::Value(v) => v.clone().into(),
+            Expr::Err(e) => e.clone().into(),
+        };
+        
+        self.set_unchecked(pos, new_expr);
+        self.get(pos)
+    }
+}
+
 impl<'a> From<RawSheet> for Sheet {
     fn from(mut value: RawSheet) -> Self {
         let cells = value
             .data
             .into_iter()
-            .map(|raw_row| raw_row.into_iter().map(RawCellData::into).collect())
+            .map(|raw_row|
+                raw_row.into_iter().map(RawCellData::into).collect()
+            )
             .collect();
 
         Self {
@@ -88,97 +156,10 @@ impl<'a> From<RawCellData> for Expr {
             RawCellData::Int(i) => Expr::Value(Box::new(Num::I(i))),
             RawCellData::Float(f) => Expr::Value(Box::new(Num::F(f))),
             RawCellData::Bool(b) => Expr::Value(Box::new(b)),
-            RawCellData::String(s) => match parse_entry(&s[..]) {
+            RawCellData::String(s) => match parse::parse_entry(&s[..]) {
                 Ok((_, expr)) => expr,
                 Err(_) => Expr::Err(CellError::ParseError),
             },
         }
-    }
-}
-
-type VerboseResult<I, O, E> = Result<(I, O), nom::Err<VerboseError<E>>>;
-
-// TODO: this implementation could be improved
-// and could instead return a `&str`
-//
-// NOTE: this parser does not consider `543` to be a float
-// anything which matches `[0-9]+\.[0-9]+` is considered to be a float
-fn float1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
-    let num = map(digit1, |str: &str| str);
-
-    let dot_and_after = tuple((tag("."), digit1));
-
-    map(tuple((num, dot_and_after)), |(num, (_, after))| {
-        Num::F((String::from(num) + after).parse().unwrap())
-    })(i)
-}
-
-fn digit1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
-    map(digit1, |s: &str| Num::I(s.parse().unwrap()))(i)
-}
-
-fn parse_num(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    map(alt((float1S, digit1S)), |num| num.into())(i)
-}
-
-fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    let letter = map(
-        take_while_m_n(1, 1, |ix: char| ix.is_alphabetic()),
-        |c: &str| c.bytes().next().unwrap(),
-    );
-
-    let numbers1 = map(digit1, |s: &str| s.parse::<u32>().unwrap());
-
-    map(tuple((letter, numbers1)), |(x, y)| {
-        Position { x: x as char, y }.into()
-    })(i)
-}
-
-fn parse_str(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    map(
-        tuple((tag("\""), take_while(|c| c != '"'), tag("\""))),
-        |(_, s, _): (_, &str, _)| Expr::Value(Box::new(s.to_owned())),
-    )(i)
-}
-
-/// TODO: this solution is recursive and thus has the ability to blow up the stack on some large data, maybe fix this?
-// TODO: whitespace
-fn parse_fn(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    let name = take_while(|c| c != '(');
-
-    let parse_all = alt((parse_num, parse_ref, parse_str, parse_fn));
-
-    let list_elem = map(
-        pair(parse_all, take_while(|c| c == ' ' || c == ',')),
-        |(expr, _)| expr,
-    );
-
-    let args = map(
-        tuple((
-            pair(tag("("), take_while(|c| c == ' ')),
-            many0(list_elem),
-            tag(")"),
-        )),
-        |(_, exprs, _)| exprs,
-    );
-
-    map(pair(name, args), |(name, args)| {
-        Expr::Form(OpInfo {
-            name: name.to_owned(),
-            args,
-        })
-    })(i)
-}
-
-fn parse_entry(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    match i.starts_with('=') {
-        false => Ok(("", Expr::Value(Box::new(i.to_owned())))),
-        true => map(
-            pair(
-                tag("="),
-                alt::<_, _, _, _>((parse_num, parse_ref, parse_str, parse_fn)),
-            ),
-            |(_, expr)| expr,
-        )(i),
     }
 }

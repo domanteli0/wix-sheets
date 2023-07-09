@@ -20,6 +20,11 @@ impl dyn Value {
             false => None,
         }
     }
+
+    pub fn is<T: Any>(&self) -> bool {
+        let self_ = self as &dyn Any;
+        self_.is::<T>()
+    }
 }
 
 impl Value for String {}

@@ -1,89 +1,84 @@
 use super::*;
 
-impl Expr {
-    fn as_value_unchecked(&self) -> &dyn Value {
-        match self {
-            Expr::Value(v) => v.as_ref(),
-            _ => panic!("Not a Value"),
+#[test]
+fn parse_then_resolve_with_refs() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::Int(5),
+                RawCellData::String("=A1".to_owned()),
+                RawCellData::Int(22),
+                RawCellData::String("=C1".to_owned()),
+                RawCellData::String("=D1".to_owned()),
+                RawCellData::String("=G1".to_owned()),
+                RawCellData::String("=A2".to_owned()),
+            ],
+            vec![
+                RawCellData::Int(6),
+                RawCellData::String("=C2".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    println!("{:?}", sheet);
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Num::I(5).into(),
+                    Num::I(5).into(),
+                    Num::I(22).into(),
+                    Num::I(22).into(),
+                    Num::I(22).into(),
+                    Num::I(6).into(),
+                    Num::I(6).into(),
+                ],
+                vec![
+                    Num::I(6).into(),
+                    CellError::InvalidReference.into(),
+                ]
+            ]
         }
-    }
+    )
 }
 
-#[test]
-fn test_parse_str() {
-    let str = "\"lol\"";
-    let parsed = parse_str(str).unwrap();
+// #[test]
+// fn parse_then_resolve_with_forms() {
+//     let raw = RawSheet {
+//         id: "sheet-test".to_owned(),
+//         data: vec![vec![
+//             RawCellData::Int(5),
+//             RawCellData::String("=A1".to_owned()),
+//             RawCellData::String("=SUM(A1, B1".to_owned()),
+//             RawCellData::String("=D1".to_owned()),
+//             RawCellData::String("=G1".to_owned()),
+//             RawCellData::String("=A1".to_owned()),
+//         ]],
+//     };
 
-    assert_eq!(parsed.0, "");
+//     let mut sheet: Sheet = raw.into();
+//     println!("{:?}", sheet);
+//     sheet.resolve_refs();
 
-    assert_eq!(
-        parsed.1.as_value_unchecked().downcast_ref::<String>(),
-        Expr::Value(Box::new("lol".to_owned()))
-            .as_value_unchecked()
-            .downcast_ref()
-    );
-}
-
-#[test]
-fn test_num() {
-    let str = "531";
-    let parsed = parse_num(str).unwrap();
-    assert_eq!(parsed.0, "");
-    assert_eq!(parsed.1, Num::I(531).into());
-}
-
-#[test]
-fn test_parse_fn() {
-    assert_eq!(
-        parse_fn("SUM(A1,52)")
-            .expect("test with fn does not fail")
-            .1,
-        Expr::Form(OpInfo {
-            name: "SUM".to_owned(),
-            args: vec![
-                Expr::Ref(Position { x: 'A', y: 1 }),
-                Expr::Value(Box::new(Num::I(52)))
-            ]
-        })
-    );
-}
-
-#[test]
-fn test_parse_form() {
-    assert_eq!(
-        parse_entry("=SUM(A1,52)").unwrap().1,
-        Expr::Form(OpInfo {
-            name: "SUM".to_owned(),
-            args: vec![
-                Expr::Ref(Position { x: 'A', y: 1 }),
-                Expr::Value(Box::new(Num::I(52)))
-            ]
-        })
-    );
-}
-
-#[test]
-fn test_parse_from_nested() {
-    assert_eq!(
-        parse_entry("=SUM(A1,MUL(5, B2))").unwrap().1,
-        Expr::Form(OpInfo {
-            name: "SUM".to_owned(),
-            args: vec![
-                Expr::Ref(Position { x: 'A', y: 1 }),
-                Expr::Form(OpInfo {
-                    name: "MUL".to_owned(),
-                    args: vec![
-                        Expr::Value(Box::new(Num::I(5))),
-                        Expr::Ref(Position { x: 'B', y: 2 })
-                    ]
-                })
-            ]
-        })
-    );
-}
-
-#[test]
-fn parse_err() {
-    let raw: RawCellData = RawCellData::String("=SUM(".to_owned());
-    assert_eq!(Expr::from(raw), Expr::Err(CellError::ParseError))
-}
+//     assert_eq!(
+//         sheet,
+//         Sheet {
+//             id: "sheet-test".to_owned(),
+//             cells: vec![vec![
+//                 Num::I(5).into(),
+//                 Num::I(5).into(),
+//                 Num::I(22).into(),
+//                 Num::I(22).into(),
+//                 Num::I(22).into(),
+//                 Num::I(5).into(),
+//                 Num::I(5).into(),
+//             ]]
+//         }
+//     )
+// }

@@ -55,8 +55,8 @@ impl Into<Box<dyn Value>> for Num {
     }
 }
 
-impl<'a> Into<Expr> for Num {
-    fn into(self) -> Expr {
-        Expr::Value(self.into())
+impl From<Num> for Expr {
+    fn from(value: Num) -> Self {
+        Expr::Value(value.into())
     }
 }

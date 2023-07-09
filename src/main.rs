@@ -6,12 +6,11 @@ pub mod data;
 pub mod Data; // rust-analyser acts funky without this line
 pub mod sheets;
 
-use std::{error::Error, any::Any};
+use std::{convert::{ From, Into }, error::Error, any::Any};
 
-use crate::{data::RawData, sheets::{Expr, num::Num}};
-use crate::sheets::Sheet;
 use serde_json;
 use reqwest;
+use wix_sheets::{data::{RawCellData, RawSheet, RawData}, sheets::{num::Num, Expr, Sheet}};
 const HUB_URL_GET: &'static str = 
     "https://www.wix.com/_serverless/hiring-task-spreadsheet-evaluator/sheets";
 
