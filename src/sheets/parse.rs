@@ -26,7 +26,7 @@ fn float1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
     let dot_and_after = tuple((tag("."), digit1));
 
     map(tuple((num, dot_and_after)), |(num, (_, after))| {
-        Num::F((String::from(num) + after).parse().unwrap())
+        Num::F((String::from(num) + "." + after).parse().unwrap())
     })(i)
 }
 
@@ -139,10 +139,15 @@ mod tests {
 
     #[test]
     fn test_num() {
-        let str = "531";
-        let parsed = parse_num(str).unwrap();
-        assert_eq!(parsed.0, "");
-        assert_eq!(parsed.1, Num::I(531).into());
+        assert_eq!(
+            ("", Num::I(531).into()),
+            parse_num("531").unwrap()
+        );
+
+        assert_eq!(
+            ("", Num::F(6.1).into()),
+            parse_num("6.1").unwrap()
+        )
     }
 
     #[test]
