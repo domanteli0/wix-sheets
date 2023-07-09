@@ -48,6 +48,30 @@ fn parse_then_resolve_with_refs() {
     )
 }
 
+#[test]
+fn parse_then_resolve_ops_with_consts() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=SUM(1, 2)".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![vec![Num::I(3).into()]]
+        }
+    )
+
+}
+
 // #[test]
 // fn parse_then_resolve_with_forms() {
 //     let raw = RawSheet {

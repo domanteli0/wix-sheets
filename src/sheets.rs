@@ -5,13 +5,13 @@ pub mod parse;
 pub mod tests;
 pub mod value;
 
-use std::{fmt::Debug, collections::HashMap};
+use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 // use serde::{Serialize, Serializer};
 use derive_more::{From, IsVariant, Unwrap};
 
-use crate::data::{RawSheet, RawCellData};
 use self::{num::Num, value::Value};
+use crate::data::{RawCellData, RawSheet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
@@ -67,10 +67,14 @@ impl From<(usize, usize)> for Position {
 pub enum CellError {
     #[error("$ERROR: Malformed formula")]
     ParseError,
-    #[error("#ERROR: Incompatible types")]
-    TypeMismatch,
+    #[error("#ERROR: Incompatible types, expected {0} at {1}")]
+    TypeMismatch(&'static str, usize),
     #[error("#ERROR: This cell references an empty field")]
     InvalidReference,
+    #[error("#ERROR: This operation takes {0} args, but {1} were supplied")]
+    InvalidArgCount(usize, usize),
+    #[error("#ERROR: Could not find an operation named {0}")]
+    NoOpFound(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,26 +87,48 @@ pub struct OpInfo {
     pub args: Vec<Expr>,
 }
 
-pub type Form = Box<dyn Fn(OpInfo) -> Expr>;
+pub type Form = Box<dyn Fn(&OpInfo) -> Expr>;
 
 impl Sheet {
+    fn get_form_map<'a>() -> HashMap<&'a str, Form> {
+        // Add one or more values together.
+        let sum: Form = Box::new(|info| {
+            if info.args.len() < 1 {
+                return CellError::InvalidArgCount(1, 0).into();
+            }
 
-    // fn get_form_map() -> HashMap<&'static str, Form> {
+            let add = |num: Num, expr: &Expr, pos: usize| -> Result<Num, _> {
+                if !expr.is_value() {
+                    todo!("implement resolve in forms")
+                }
+                match expr.clone().unwrap_value().downcast_ref::<Num>() {
+                    Some(n) => Ok((*n + num).into()),
+                    None => Err(CellError::TypeMismatch("Num", pos)),
+                }
+            };
 
-    //     let map = HashMap::from([
-    //         ("SUM", |info| {
-    //             let get_args = |op_info,| {
+            let res_fn = || -> Result<_, _> {
+                let mut res = Ok(Num::I(0));
+                for (pos, expr) in info.args.iter().enumerate() {
+                    let res_ = res?;
+                    res = add(res_, expr, pos);
+                }
+                res
+            };
 
-    //             }
-    //         })
-    //     ]);
+            match res_fn() {
+                Ok(num) => num.into(),
+                Err(r) => r.into(),
+            }
+        });
 
-    //     map
-    // }
+        let map = HashMap::from([("SUM", sum)]);
+
+        map
+    }
 
     // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
     pub fn resolve_refs(&mut self) {
-
         let mut iy = 0;
         while iy < self.cells.len() {
             let mut jx = 0;
@@ -115,19 +141,26 @@ impl Sheet {
     }
 
     fn resolve_on_pos(&mut self, pos: Position) -> Option<&Expr> {
-        let expr = self
-            .get(pos)?;
+        let expr = self.get(pos)?;
 
         let new_expr: Expr = match expr {
             Expr::Ref(r) => self
                 .resolve_on_pos(*r)
                 .map(|e| e.clone())
                 .unwrap_or(CellError::InvalidReference.into()),
-            Expr::Form(_) => todo!(),
+            Expr::Form(op_info) => {
+                // TODO: move this somewhere else as not to re-create
+                // the whole hashmap everytime
+                let map = Self::get_form_map();
+
+                map.get(&op_info.name[..])
+                    .map(|o| o(&op_info))
+                    .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
+            }
             Expr::Value(v) => v.clone().into(),
             Expr::Err(e) => e.clone().into(),
         };
-        
+
         self.set_unchecked(pos, new_expr);
         self.get(pos)
     }
@@ -138,9 +171,7 @@ impl<'a> From<RawSheet> for Sheet {
         let cells = value
             .data
             .into_iter()
-            .map(|raw_row|
-                raw_row.into_iter().map(RawCellData::into).collect()
-            )
+            .map(|raw_row| raw_row.into_iter().map(RawCellData::into).collect())
             .collect();
 
         Self {

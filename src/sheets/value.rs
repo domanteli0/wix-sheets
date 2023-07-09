@@ -9,7 +9,6 @@ use dyn_clonable;
 pub trait Value: Any + Debug + DynClone + DynEq + Clone {}
 dyn_eq::eq_trait_object!(Value);
 
-
 impl dyn Value {
     // Once trait upcasting is stabilized (https://github.com/rust-lang/rust/issues/65991) this should work on rust-stable
     // this function is copy - pasted from here: (https://doc.rust-lang.org/src/alloc/boxed.rs.html#1700)

@@ -18,3 +18,4 @@
 07-09:
 * 0:33 - finished parser implementation
 * 19:03 - implemented resolving of refs
+* 21:37 - imeplemented rudamental revolving of formulas
