@@ -6,13 +6,18 @@ pub mod data;
 pub mod Data; // rust-analyser acts funky without this line
 pub mod sheets;
 
-use std::{convert::{ From, Into }, error::Error, any::Any};
+use std::{env, convert::{ From, Into }, error::Error, any::Any};
 
 use serde_json;
 use reqwest;
 use wix_sheets::{data::{RawCellData, RawSheet, RawData}, sheets::{num::Num, Expr, Sheet}};
 const HUB_URL_GET: &'static str = 
     "https://www.wix.com/_serverless/hiring-task-spreadsheet-evaluator/sheets";
+
+struct Results {
+    email: String,
+    results: Vec<Sheet>,
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let data_str = reqwest::blocking::get(HUB_URL_GET)?
@@ -29,6 +34,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("{:#?}", data);
+
+    let results = Results {
+        email: env::args().next().unwrap(),
+        results: data,
+    };
 
     Ok(())
 }

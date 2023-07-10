@@ -11,7 +11,7 @@ use nom::{
     sequence::{pair, tuple},
 };
 
-use super::{num::Num, Expr, OpInfo, Position, CellError};
+use super::{num::Num, CellError, Expr, OpInfo, Position};
 
 type VerboseResult<I, O, E> = Result<(I, O), nom::Err<VerboseError<E>>>;
 
@@ -44,18 +44,21 @@ fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
         |c: &str| c.bytes().next().unwrap(),
     );
 
-
     let numbers1 = map(digit1, |s: &str| s.parse::<usize>().unwrap());
 
     map(tuple((letter, numbers1)), |(x, y)| {
-        let pos = Position { x: ( x as u8 - b'A' ) as usize, y: y };
+        let pos = Position {
+            x: (x as u8 - b'A') as usize,
+            y: y,
+        };
         if pos.y == 0 {
             CellError::InvalidReference.into()
         } else {
             Position {
                 y: pos.y - 1,
                 ..pos
-            }.into()
+            }
+            .into()
         }
     })(i)
 }
@@ -67,12 +70,18 @@ fn parse_str(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     )(i)
 }
 
+fn parse_bool(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
+    map(alt((tag("false"), tag("true"))), |s: &str| {
+        Expr::Value(Box::new(s.starts_with('t')))
+    })(i)
+}
+
 /// TODO: this solution is recursive and thus has the ability to blow up the stack on some large data, maybe fix this?
 // TODO: whitespace
 fn parse_fn(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     let name = take_while(|c| c != '(');
 
-    let parse_all = alt((parse_num, parse_ref, parse_str, parse_fn));
+    let parse_all = alt((parse_bool, parse_num, parse_ref, parse_str, parse_fn));
 
     let list_elem = map(
         pair(parse_all, take_while(|c| c == ' ' || c == ',')),
@@ -98,11 +107,16 @@ fn parse_fn(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
 
 pub fn parse_entry(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     match i.starts_with('=') {
-        false => Ok(("", Expr::Value(Box::new(i.to_owned())))),
+        false => map(
+            alt((
+                parse_bool,
+                |s: &str| Ok(("", Expr::Value(Box::new(s.to_owned())))))),
+            |expr| expr,
+        )(i),
         true => map(
             pair(
                 tag("="),
-                alt::<_, _, _, _>((parse_num, parse_ref, parse_str, parse_fn)),
+                alt::<_, _, _, _>((parse_bool, parse_num, parse_ref, parse_str, parse_fn)),
             ),
             |(_, expr)| expr,
         )(i),
@@ -111,7 +125,7 @@ pub fn parse_entry(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
 
 #[cfg(test)]
 mod tests {
-    use crate::sheets::{*, parse::*};
+    use crate::sheets::{parse::*, *};
 
     impl Expr {
         fn as_value_unchecked(&self) -> &dyn Value {
@@ -139,15 +153,9 @@ mod tests {
 
     #[test]
     fn test_num() {
-        assert_eq!(
-            ("", Num::I(531).into()),
-            parse_num("531").unwrap()
-        );
+        assert_eq!(("", Num::I(531).into()), parse_num("531").unwrap());
 
-        assert_eq!(
-            ("", Num::F(6.1).into()),
-            parse_num("6.1").unwrap()
-        )
+        assert_eq!(("", Num::F(6.1).into()), parse_num("6.1").unwrap())
     }
 
     #[test]
@@ -192,6 +200,20 @@ mod tests {
                             Expr::Ref(Position { x: 1, y: 1 })
                         ]
                     })
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_str_inside_form() {
+        assert_eq!(
+            parse_entry("=CONCAT(\"H\", \"i\")").unwrap().1,
+            Expr::Form(OpInfo {
+                name: "CONCAT".to_owned(),
+                args: vec![
+                    Expr::Value(Box::new("H".to_owned())),
+                    Expr::Value(Box::new("i".to_owned())),
                 ]
             })
         );

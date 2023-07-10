@@ -1,13 +1,14 @@
 use std::any::Any;
 use std::fmt::Debug;
+use dyn_ord;
 use dyn_eq::DynEq;
 
 use dyn_clone::DynClone;
 use dyn_clonable;
 
 #[dyn_clonable::clonable]
-pub trait Value: Any + Debug + DynClone + DynEq + Clone {}
-dyn_eq::eq_trait_object!(Value);
+pub trait Value: Any + Debug + DynClone + DynEq + dyn_ord::DynOrd + Clone {}
+// dyn_eq::eq_trait_object!(Value);
 
 impl dyn Value {
     // Once trait upcasting is stabilized (https://github.com/rust-lang/rust/issues/65991) this should work on rust-stable
@@ -23,6 +24,12 @@ impl dyn Value {
     pub fn is<T: Any>(&self) -> bool {
         let self_ = self as &dyn Any;
         self_.is::<T>()
+    }
+}
+
+impl From<&str> for Box<dyn Value> {
+    fn from(value: &str) -> Self {
+        Box::new(value.to_owned())
     }
 }
 

@@ -1,18 +1,46 @@
 use derive_more::{self, Display, From};
-use std::{
-    ops::{Add, AddAssign, Mul, MulAssign, Div, DivAssign},
-};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign};
 
 use super::{value::Value, Expr};
 
 impl Value for Num {}
 // This newtype allows to change the underlying implementation
-#[derive(Debug, PartialEq, PartialOrd, Clone, Copy, Display, From)]
+#[derive(Debug, Clone, Copy, Display, From)]
 pub enum Num {
     #[display(fmt = "{}", _0.display())]
     F(f64),
     #[display(fmt = "{}", _0.display())]
     I(i64),
+}
+
+impl PartialOrd for Num {
+    fn partial_cmp(&self, rhs: &Num) -> Option<std::cmp::Ordering> {
+        match self {
+            Num::I(i1) => match rhs {
+                Num::I(i2) => i1.partial_cmp(&i2),
+                Num::F(f2) => ( *i1 as f64 ).partial_cmp(&f2),
+            },
+            Num::F(f1) => match rhs {
+                Num::F(f2) => f1.partial_cmp(f2),
+                Num::I(i2) => ( *f1 ).partial_cmp(&( *i2 as f64) ),
+            },
+        }
+    }
+}
+
+impl PartialEq for Num {
+    fn eq(&self, rhs: &Num) -> bool {
+        match self {
+            Num::I(i1) => match rhs {
+                Num::I(i2) => i1 == i2,
+                Num::F(f2) => *i1 as f64 == *f2,
+            },
+            Num::F(f1) => match rhs {
+                Num::F(f2) => f1 == f2,
+                Num::I(i2) => *f1 == (*i2 as f64),
+            },
+        }
+    }
 }
 
 impl Eq for Num {}
@@ -33,7 +61,6 @@ impl Add for Num {
         }
     }
 }
-
 
 impl Mul for Num {
     type Output = Num;
@@ -58,11 +85,13 @@ impl Div for Num {
     fn div(self, rhs: Self) -> Self::Output {
         match self {
             Num::I(i1) => match rhs {
-                Num::I(i2) => if i1 % i2 == 0{
-                        Num::I(i1 / i2) 
+                Num::I(i2) => {
+                    if i1 % i2 == 0 {
+                        Num::I(i1 / i2)
                     } else {
-                        Num::F(i1 as f64 / i2 as f64) 
-                    },
+                        Num::F(i1 as f64 / i2 as f64)
+                    }
+                }
                 Num::F(f2) => Num::F(i1 as f64 / f2),
             },
             Num::F(f1) => match rhs {
@@ -70,7 +99,7 @@ impl Div for Num {
                 Num::I(i2) => Num::F(f1 / (i2 as f64)),
             },
         }
-    } 
+    }
 }
 
 impl AddAssign for Num {

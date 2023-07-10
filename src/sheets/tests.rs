@@ -164,12 +164,10 @@ fn parse_then_resolve_forms_with_mul() {
         sheet,
         Sheet {
             id: "sheet-test".to_owned(),
-            cells: vec![vec![
-                    Num::I(4).into(),
-                    Num::I(8).into(),
-                ], vec![
-                    Num::F(34.5).into()
-                ]]
+            cells: vec![
+                vec![Num::I(4).into(), Num::I(8).into(),],
+                vec![Num::F(34.5).into()]
+            ]
         }
     )
 }
@@ -196,15 +194,12 @@ fn parse_then_resolve_divive() {
         sheet,
         Sheet {
             id: "sheet-test".to_owned(),
-            cells: vec![vec![
-                    Num::I(4).into(),
-                    Num::I(8).into(),
-                ], vec![
-                    Num::F(32.0 / 5.0).into()
-                ]]
+            cells: vec![
+                vec![Num::I(4).into(), Num::I(8).into(),],
+                vec![Num::F(32.0 / 5.0).into()]
+            ]
         }
     );
-
 
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
@@ -226,12 +221,231 @@ fn parse_then_resolve_divive() {
         sheet,
         Sheet {
             id: "sheet-test".to_owned(),
-            cells: vec![vec![
-                    Num::I(4).into(),
-                    Num::I(8).into(),
-                ], vec![
-                    CellError::DivByZero.into(),
-                ]]
+            cells: vec![
+                vec![Num::I(4).into(), Num::I(8).into(),],
+                vec![CellError::DivByZero.into(),]
+            ]
         }
     );
 }
+
+#[test]
+fn parse_then_resolve_with_concat() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("Hello".to_owned()),
+                RawCellData::String(", ".to_owned()),
+                RawCellData::String("=\"Hi!\"".to_owned()),
+            ],
+            vec![
+                RawCellData::String("=\"World\"".to_owned()),
+                RawCellData::String("=CONCAT(A1, B1, A2, C2)".to_owned()),
+                RawCellData::String("=CONCAT(\"!\")".to_owned()),
+                RawCellData::String("=CONCAT(\"Hello, \", \"World!\")".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Value(Box::new(String::from("Hello"))),
+                    Expr::Value(Box::new(String::from(", "))),
+                    Expr::Value(Box::new(String::from("Hi!"))),
+                ],
+                vec![
+                    Expr::Value(Box::new(String::from("World"))),
+                    Expr::Value(Box::new(String::from("Hello, World!"))),
+                    Expr::Value(Box::new(String::from("!"))),
+                    Expr::Value(Box::new(String::from("Hello, World!"))),
+                ]
+            ]
+        }
+    );
+}
+
+#[test]
+fn parse_then_resolve_not() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=NOT(false)".to_owned()),
+                RawCellData::String("=NOT(A1)".to_owned()),
+            ],
+            vec![
+                RawCellData::String("=NOT(B2))".to_owned()),
+                RawCellData::String("false".to_owned()),
+                RawCellData::String("=true".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![Expr::Value(Box::new(true)), Expr::Value(Box::new(false)),],
+                vec![
+                    Expr::Value(Box::new(true)),
+                    Expr::Value(Box::new(false)),
+                    Expr::Value(Box::new(true)),
+                ]
+            ]
+        }
+    );
+}
+
+#[test]
+fn parse_then_resolve_gt() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![RawCellData::Int(5), RawCellData::Float(6.0)],
+            vec![
+                RawCellData::String("=GT(A1, B1)".to_owned()),
+                RawCellData::String("=GT(B1, 4.9)".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = (raw.into());
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Value(Num::I(5).into()),
+                    Expr::Value(Num::F(6.0).into())
+                ],
+                vec![Expr::Value(Box::new(false)), Expr::Value(Box::new(true)),]
+            ]
+        }
+    );
+}
+
+#[test]
+fn parse_then_resolve_eq() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![RawCellData::Int(6), RawCellData::Float(6.0)],
+            vec![
+                RawCellData::String("=EQ(A1, B1)".to_owned()),
+                RawCellData::String("=EQ(B1, \"String\")".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Value(Num::I(6).into()),
+                    Expr::Value(Num::F(6.0).into())
+                ],
+                vec![
+                    Expr::Value(Box::new(true)),
+                    Expr::Err(CellError::BinaryTypeMismatch),
+                ]
+            ]
+        }
+    );
+}
+
+#[test]
+fn parse_then_resolve_and_not() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![RawCellData::Int(6), RawCellData::Float(6.0)],
+            vec![
+                RawCellData::String("=EQ(A1, B1)".to_owned()),
+                RawCellData::String("=EQ(B1, \"String\")".to_owned()),
+            ],
+            vec![
+                RawCellData::String("=AND(true, A2)".to_owned()),
+                RawCellData::String("=OR(false, A3)".to_owned()),
+            ]
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Value(Num::I(6).into()),
+                    Expr::Value(Num::F(6.0).into())
+                ],
+                vec![
+                    Expr::Value(Box::new(true)),
+                    Expr::Err(CellError::BinaryTypeMismatch),
+                ],
+                vec![
+                    Expr::Value(Box::new(true)),
+                    Expr::Value(Box::new(true)),
+                ]
+            ]
+        }
+    );
+}
+
+#[test]
+fn parse_then_resolve_if() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![RawCellData::Int(6), RawCellData::Float(6.0)],
+            vec![
+                RawCellData::String("=IF(EQ(A1, B1), \"Equal\", \"Not equal\")".to_owned()),
+                RawCellData::String("=EQ(A2, \"String\")".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Value(Num::I(6).into()),
+                    Expr::Value(Num::F(6.0).into())
+                ],
+                vec![
+                    Expr::Value(Box::new("Equal".to_owned())),
+                    Expr::Value(Box::new(false)),
+                ],
+            ]
+        }
+    );
+}
+
