@@ -118,7 +118,7 @@ fn foldr_with_check<C: Value + Clone, T: Value>(
         .unwrap_or_else(|e| Expr::Err(e))
 }
 
-pub fn get_form_map<'a>() -> HashMap<&'a str, Operator> {
+pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     let mut map = HashMap::<&str, Operator>::new();
 
     let sum = Box::new(|_: &mut _, info: &mut OpInfo| {

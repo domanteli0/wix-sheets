@@ -5,17 +5,17 @@ pub mod operators;
 pub mod parse;
 pub mod tests;
 pub mod value;
+pub mod expr;
 
-use derive_more::{From, IsVariant, Unwrap};
 use dyn_ord::{DynEq, DynOrd};
 use jsonway::{self, ObjectBuilder};
-use serde_json::value::Value as SerdeValue;
 use serde_json::map::Map as SerdeMap;
-use serde_json::Number;
+use serde_json::value::Value as SerdeValue;
 use std::convert::Into;
 use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 
+use self::expr::*;
 use self::{num::Num, value::Value};
 use crate::data::{RawCellData, RawSheet};
 
@@ -39,49 +39,6 @@ impl Sheet {
     }
 }
 
-#[derive(Debug, Clone, From, IsVariant, Unwrap)]
-// TODO: implement unwrap_value such that it moves self, reducing cloning
-pub enum Expr {
-    Value(Box<dyn Value>),
-    Ref(Position),
-    Form(OpInfo),
-    Err(CellError),
-}
-
-impl PartialEq for Expr {
-    fn eq(&self, rhs: &Expr) -> bool {
-        if self.is_err() && rhs.is_err() {
-            self.clone().unwrap_err() == rhs.clone().unwrap_err()
-        } else if self.clone().is_form() && rhs.clone().is_form() {
-            self.clone().unwrap_form() == rhs.clone().unwrap_form()
-        } else if self.is_ref() && rhs.is_ref() {
-            self.clone().unwrap_ref() == rhs.clone().unwrap_ref()
-        } else if self.is_value() == rhs.is_value() {
-            (self.clone().unwrap_value() as Box<dyn DynEq>)
-                == (rhs.clone().unwrap_value() as Box<dyn DynEq>)
-        } else {
-            false
-        }
-    }
-}
-
-impl Into<SerdeValue> for Expr {
-    fn into(self) -> SerdeValue {
-        match self {
-            Expr::Value(v) => {
-                if let Some(b) = v.downcast_ref::<bool>() {
-                    return SerdeValue::Bool(*b);
-                }
-                if let Some(n) = v.downcast_ref::<Num>() {
-                    return SerdeValue::Number(Number::from_f64((*n).into()).unwrap());
-                }
-                SerdeValue::String(v.to_string())
-            }
-            Expr::Err(e) => serde_json::value::Value::String(e.to_string()),
-            _ => unreachable!("Assumed resolved"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
@@ -134,27 +91,31 @@ pub struct OpInfo {
 
 impl Sheet {
     // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
-    pub fn resolve_refs(&mut self) {
+    pub fn resolve_refs(&mut self, ops: &mut HashMap<&'static str, operators::Operator>) {
         for iy in 0..self.cells.len() {
             for jx in 0..self.cells[iy].len() {
-                self.resolve_on_pos((jx, iy).into());
+                self.resolve_on_pos((jx, iy).into(), ops);
             }
         }
     }
 
-    fn resolve_on_pos(&mut self, pos: Position) -> Option<&Expr> {
+    fn resolve_on_pos(
+        &mut self,
+        pos: Position,
+        ops: &mut HashMap<&'static str, operators::Operator>,
+    ) -> Option<&Expr> {
         let expr = self.get(pos)?;
 
         let new_expr: Expr = match expr.clone() {
             Expr::Ref(r) => self
-                .resolve_on_pos(r)
+                .resolve_on_pos(r, ops)
                 .map(|e| e)
                 .unwrap_or(&Expr::Err(CellError::InvalidReference))
                 .clone(),
             Expr::Form(mut op_info) => {
-                let mut map = operators::get_form_map();
+                let mut map = operators::get_default_op_map();
 
-                op_info.resolve_with_sheet(self);
+                op_info.resolve_with_sheet(self, ops);
 
                 map.get_mut(&op_info.name[..])
                     .map(|o| o(self, &mut op_info))
@@ -174,21 +135,21 @@ impl Into<SerdeValue> for Sheet {
     fn into(self) -> SerdeValue {
         let mut map: SerdeMap<String, SerdeValue> = SerdeMap::new();
         map.insert("id".to_string(), SerdeValue::String(self.id.clone()));
-        
+
         let data = self
             .cells
             .iter()
             .map(|row| {
-                SerdeValue::Array(row
-                    .iter()
-                    .map(|cell| cell.clone().into())
-                    .collect::<Vec<SerdeValue>>()
+                SerdeValue::Array(
+                    row.iter()
+                        .map(|cell| cell.clone().into())
+                        .collect::<Vec<SerdeValue>>(),
                 )
             })
             .collect::<Vec<_>>();
         let data = SerdeValue::Array(data);
         map.insert("data".to_owned(), data);
-        
+
         SerdeValue::Object(map)
     }
 }
@@ -211,7 +172,11 @@ impl jsonway::Serializer for Sheet {
 impl OpInfo {
     // after this is called `self` should only contain
     // `Expr`s which are either `Err` or `Value`
-    fn resolve_with_sheet(&mut self, sheet: &mut Sheet) {
+    fn resolve_with_sheet(
+        &mut self,
+        sheet: &mut Sheet,
+        ops: &mut HashMap<&'static str, operators::Operator>,
+    ) {
         let mut self_ = self.clone();
         self_.args.iter_mut().for_each(|e: &mut Expr| {
             if e.is_err() || e.is_value() {
@@ -220,17 +185,17 @@ impl OpInfo {
 
             let e_ = match e {
                 Expr::Ref(r) => sheet
-                    .resolve_on_pos(*r)
+                    .resolve_on_pos(*r, ops)
                     .map(|e| e)
                     .unwrap_or(&Expr::Err(CellError::InvalidReference))
                     .clone(),
                 Expr::Form(op_info) => {
-                    op_info.resolve_with_sheet(sheet);
+                    op_info.resolve_with_sheet(sheet, ops);
 
                     // actually calc
                     // TODO: move this somewhere else as not to re-create
                     // the whole hashmap everytime
-                    operators::get_form_map()
+                    operators::get_default_op_map()
                         .get_mut(&op_info.name[..])
                         .map(|o| o(sheet, op_info))
                         .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())

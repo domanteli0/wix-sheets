@@ -2,6 +2,7 @@ use super::*;
 
 #[test]
 fn parse_then_resolve_with_refs() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -20,7 +21,7 @@ fn parse_then_resolve_with_refs() {
 
     let mut sheet: Sheet = raw.into();
     println!("{:?}", sheet);
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -44,13 +45,14 @@ fn parse_then_resolve_with_refs() {
 
 #[test]
 fn parse_then_resolve_ops_with_consts() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![vec![RawCellData::String("=SUM(1, 2)".to_owned())]],
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -63,6 +65,7 @@ fn parse_then_resolve_ops_with_consts() {
 
 #[test]
 fn parse_then_resolve_forms_with_refs() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -72,7 +75,7 @@ fn parse_then_resolve_forms_with_refs() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -88,6 +91,7 @@ fn parse_then_resolve_forms_with_refs() {
 
 #[test]
 fn parse_then_resolve_forms_with_nested_froms_with_refs() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -104,7 +108,7 @@ fn parse_then_resolve_forms_with_nested_froms_with_refs() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -121,13 +125,14 @@ fn parse_then_resolve_forms_with_nested_froms_with_refs() {
 
 #[test]
 fn parse_then_resolve_fn_with_errs() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![vec![RawCellData::String("=SUM(1, A2, \"Hi\")".to_owned())]],
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -144,6 +149,7 @@ fn parse_then_resolve_fn_with_errs() {
 
 #[test]
 fn parse_then_resolve_forms_with_mul() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -158,7 +164,7 @@ fn parse_then_resolve_forms_with_mul() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -174,6 +180,7 @@ fn parse_then_resolve_forms_with_mul() {
 
 #[test]
 fn parse_then_resolve_divive() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -188,7 +195,7 @@ fn parse_then_resolve_divive() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -215,7 +222,7 @@ fn parse_then_resolve_divive() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -231,6 +238,7 @@ fn parse_then_resolve_divive() {
 
 #[test]
 fn parse_then_resolve_with_concat() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -249,7 +257,7 @@ fn parse_then_resolve_with_concat() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -274,6 +282,7 @@ fn parse_then_resolve_with_concat() {
 
 #[test]
 fn parse_then_resolve_not() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -290,7 +299,7 @@ fn parse_then_resolve_not() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -310,6 +319,7 @@ fn parse_then_resolve_not() {
 
 #[test]
 fn parse_then_resolve_gt() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -322,7 +332,7 @@ fn parse_then_resolve_gt() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -341,6 +351,7 @@ fn parse_then_resolve_gt() {
 
 #[test]
 fn parse_then_resolve_eq() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -353,7 +364,7 @@ fn parse_then_resolve_eq() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -375,6 +386,7 @@ fn parse_then_resolve_eq() {
 
 #[test]
 fn parse_then_resolve_and_not() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -391,7 +403,7 @@ fn parse_then_resolve_and_not() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
@@ -417,6 +429,7 @@ fn parse_then_resolve_and_not() {
 
 #[test]
 fn parse_then_resolve_if() {
+    let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
@@ -429,7 +442,7 @@ fn parse_then_resolve_if() {
     };
 
     let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
+    sheet.resolve_refs(&mut ops);
 
     assert_eq!(
         sheet,
