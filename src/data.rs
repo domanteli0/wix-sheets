@@ -31,20 +31,4 @@ impl RawCellData {
     fn swap(&mut self, mut other: Self) {
         std::mem::swap(self, &mut other);
     }
-
-    // TODO: Add tests for this as this does not occur in `example.json`
-    // but is possible according to the spec
-    pub fn resolve_const(&mut self) {
-        if let Some(s) = self.get_str() {
-            if let Ok(i) = s.trim_start_matches('=').parse() {
-                self.swap(RawCellData::Int(i));
-            } else if let Ok(f) = s.trim_start_matches('=').parse() {
-                self.swap(RawCellData::Float(f));
-            } else if s == "=false" {
-                self.swap(RawCellData::Bool(false))
-            } else if s == "=true" {
-                self.swap(RawCellData::Bool(true))
-            }
-        }
-    }
 }
