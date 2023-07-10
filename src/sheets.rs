@@ -5,8 +5,8 @@ pub mod parse;
 pub mod tests;
 pub mod value;
 
-use std::{collections::HashMap, fmt::Debug};
 use serde::de::IntoDeserializer;
+use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 // use serde::{Serialize, Serializer};
 use derive_more::{From, IsVariant, Unwrap};
@@ -68,8 +68,8 @@ impl From<(usize, usize)> for Position {
 pub enum CellError {
     #[error("$ERROR: Malformed formula")]
     ParseError,
-    #[error("#ERROR: Incompatible types, expected {0} at {1}")]
-    TypeMismatch(&'static str, usize),
+    #[error("#ERROR: Incompatible types, expected {0}")]
+    TypeMismatch(&'static str),
     #[error("#ERROR: This cell references an empty field")]
     InvalidReference,
     #[error("#ERROR: This operation takes {0} args, but {1} were supplied")]
@@ -77,7 +77,10 @@ pub enum CellError {
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
     #[error("$ERROR: Referenced cell(s) have errors {0:?}")]
-    RefError(Vec<(Position, CellError)>)
+    RefError(Vec<(Position, CellError)>),
+    #[error("$#ERROR: These errors have occured in this formula: {0:?}")]
+    // usize - which arg, CellError - what type of error
+    FormError(Vec<(usize, CellError)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,63 +95,72 @@ pub struct OpInfo {
 
 pub type Form = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Expr>;
 
-fn get_at_least_of_type<T: Value>(Vec)
+fn foldr<C: Value + Clone, T>(
+    self_: &mut OpInfo,
+    init: T,
+    f: impl Fn(T, C) -> T,
+    type_err: &'static str,
+) -> Result<T, CellError> {
+    // find and return errors
+    let errors = self_
+        .args
+        .iter()
+        .enumerate()
+        .filter(|(_, expr)|
+            expr.is_err() || expr.clone().clone().unwrap_value().downcast_ref::<C>().is_none()
+        )
+        .map(|(ix, expr): (_, &Expr)| match expr {
+            Expr::Value(v) => (ix + 1, CellError::TypeMismatch(type_err)),
+            Expr::Err(e) => (ix + 1, e.clone()),
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+
+    if errors.len() > 0 {
+        return Err(CellError::FormError(errors));
+    }
+
+    Ok(self_.args.iter().fold(init, |acc, e| {
+        f(acc, e.clone().unwrap_value().downcast_ref::<C>().unwrap().clone())
+    }))
+}
 
 impl Sheet {
     fn get_form_map<'a>() -> HashMap<&'a str, Form> {
         let mut map = HashMap::<&str, Form>::new();
-        // let get_args = |op_info: &OpInfo| -> Result<(), CellError> {
 
-        //     todo!();
-        // };
+        let sum = Box::new(
+            |sheet: &mut Sheet, info: &mut OpInfo| {
+                if info.args.len() < 1 {
+                    return Expr::Err(CellError::InvalidArgCount(1, 0));
+                }
 
-        // let expect_type = |op_info: &OpInfo| -> Result<(), CellError> {
+                foldr(
+                    info, 
+                    Num::I(0), 
+                    |acc, n| acc + n, 
+                    "Num"
+                ).map(|n| Expr::Value(Box::new(n)))
+                .unwrap_or_else(|e| Expr::Err(e))
+            }
+        );
 
-        //     todo!()
-        // };
-
-        // Add one or more values together.
-        let sum: Form = Box::new(|sheet, info| {
+        let mul: Form = Box::new(|sheet, info| {
             if info.args.len() < 1 {
-                return CellError::InvalidArgCount(1, 0).into();
+                return Expr::Err(CellError::InvalidArgCount(1, 0));
             }
 
-            let val_to_num_or_err =
-                |val: &Box<dyn Value>, num: Num, pos: usize| -> Result<Num, CellError> {
-                match val.clone().downcast_ref::<Num>() {
-                    Some(n) => Ok((*n + num).into()),
-                    None => Err(CellError::TypeMismatch("Num", pos + 1)),
-                }
-            };
-
-            let mut add = |num: Num, expr: &mut Expr, pos: usize| -> Result<Num, CellError> {
-                match expr {
-                    Expr::Value(v) => {
-                        val_to_num_or_err(v, num, pos)
-                    },
-                    Expr::Err(e) => 
-                        // TODO: Actually use ref position for `RefError` 
-                        Err(CellError::RefError(vec![((0,0).into(), e.clone())])),
-                    _ => unreachable!()
-                }
-            };
-
-            let mut res_fn = || -> Result<_, _> {
-                let mut res = Ok(Num::I(0));
-                for (pos, expr) in info.args.iter_mut().enumerate() {
-                    let res_ = res?;
-                    res = add(res_, expr, pos);
-                }
-                res
-            };
-
-            match res_fn() {
-                Ok(num) => num.into(),
-                Err(r) => r.into(),
-            }
+            foldr(
+                info,
+                Num::I(1),
+                |acc, n| acc * n,
+                "Num"
+            ).map(|n| Expr::Value(Box::new(n)))
+            .unwrap_or_else(|e| Expr::Err(e))
         });
 
         map.insert("SUM", sum);
+        map.insert("MULTIPLY", mul);
 
         map
     }
@@ -172,22 +184,16 @@ impl Sheet {
                 .unwrap_or(&Expr::Err(CellError::InvalidReference))
                 .clone(),
             Expr::Form(mut op_info) => {
-               let mut map = Self::get_form_map();
+                let mut map = Self::get_form_map();
 
                 op_info.resolve_with_sheet(self);
 
                 map.get_mut(&op_info.name[..])
                     .map(|o| o(self, &mut op_info))
-                    .unwrap_or(
-                        CellError::NoOpFound(
-                            op_info.name.clone()
-                        ).into()
-                    )
-            },
+                    .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
+            }
             Expr::Value(v) => v.into(),
-            Expr::Err(e) => Expr::Err(
-                CellError::RefError(vec![((0,0).into(), e)])
-            ),
+            Expr::Err(e) => Expr::Err(CellError::RefError(vec![((0, 0).into(), e)])),
         };
 
         self.set_unchecked(pos, new_expr);
@@ -201,15 +207,15 @@ impl OpInfo {
     fn resolve_with_sheet(&mut self, sheet: &mut Sheet) {
         let mut self_ = self.clone();
         self_.args.iter_mut().for_each(|e: &mut Expr| {
-            if e.is_err() || e.is_value() { return; }
+            if e.is_err() || e.is_value() {
+                return;
+            }
 
             let e_ = match e {
                 Expr::Ref(r) => sheet
                     .resolve_on_pos(*r)
                     .map(|e| e)
-                    .unwrap_or(
-                        &Expr::Err(CellError::InvalidReference)
-                    )
+                    .unwrap_or(&Expr::Err(CellError::InvalidReference))
                     .clone(),
                 Expr::Form(op_info) => {
                     op_info.resolve_with_sheet(sheet);
@@ -220,12 +226,8 @@ impl OpInfo {
                     Sheet::get_form_map()
                         .get_mut(&op_info.name[..])
                         .map(|o| o(sheet, op_info))
-                        .unwrap_or(
-                            CellError::NoOpFound(
-                                op_info.name.clone()
-                            ).into()
-                        )
-                },
+                        .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
+                }
                 _ => unreachable!(),
             };
 

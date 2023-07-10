@@ -70,28 +70,6 @@ fn parse_then_resolve_ops_with_consts() {
         }
     );
 
-
-    let raw = RawSheet {
-        id: "sheet-test".to_owned(),
-        data: vec![
-            vec![
-                RawCellData::String("=SUM(1, \"Hi\")".to_owned()),
-            ],
-        ],
-    };
-
-    let mut sheet: Sheet = raw.into();
-    sheet.resolve_refs();
-
-    assert_eq!(
-        sheet,
-        Sheet {
-            id: "sheet-test".to_owned(),
-            cells: vec![vec![
-                CellError::TypeMismatch("Num", 2).into()
-            ]]
-        }
-    )
 }
 
 #[test]
@@ -174,4 +152,57 @@ fn parse_then_resolve_forms_with_nested_froms_with_refs() {
     );
 
 
+}
+
+#[test]
+fn parse_then_resolve_fn_with_errs() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=SUM(1, A2, \"Hi\")".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![vec![
+                CellError::FormError(vec![
+                    (2, CellError::InvalidReference),
+                    (3, CellError::TypeMismatch("Num")),
+                ]).into()
+            ]]
+        }
+    )
+}
+
+#[test]
+fn parse_then_resolve_forms_with_mul() {
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=MULTIPLY(2, 2)".to_owned()),
+            ],
+        ],
+    };
+
+    let mut sheet: Sheet = raw.into();
+    sheet.resolve_refs();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![vec![
+                Num::I(4).into()
+            ]]
+        }
+    ) 
 }
