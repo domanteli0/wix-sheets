@@ -4,9 +4,11 @@ pub mod num;
 pub mod parse;
 pub mod tests;
 pub mod value;
+pub mod formulas;
 
 use serde::de::IntoDeserializer;
 use std::{collections::HashMap, fmt::Debug};
+use std::ops::{RangeBounds, Bound};
 use thiserror::Error;
 // use serde::{Serialize, Serializer};
 use derive_more::{From, IsVariant, Unwrap};
@@ -72,15 +74,18 @@ pub enum CellError {
     TypeMismatch(&'static str),
     #[error("#ERROR: This cell references an empty field")]
     InvalidReference,
-    #[error("#ERROR: This operation takes {0} args, but {1} were supplied")]
-    InvalidArgCount(usize, usize),
+    #[error("#ERROR: This operation takes {0:?} args, but {1} were supplied")]
+    // TODO: Select a concrete Range impl and use that
+    InvalidArgCount(core::ops::Bound<usize>, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
-    #[error("$ERROR: Referenced cell(s) have errors {0:?}")]
-    RefError(Vec<(Position, CellError)>),
+    #[error("$ERROR: Referenced cell {0} has errors {1:?}")]
+    RefError(Box<CellError>, Position),
     #[error("$#ERROR: These errors have occured in this formula: {0:?}")]
     // usize - which arg, CellError - what type of error
     FormError(Vec<(usize, CellError)>),
+    #[error("#ERROR: Division by zero")]
+    DivByZero,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,14 +100,8 @@ pub struct OpInfo {
 
 pub type Form = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Expr>;
 
-fn foldr<C: Value + Clone, T>(
-    self_: &mut OpInfo,
-    init: T,
-    f: impl Fn(T, C) -> T,
-    type_err: &'static str,
-) -> Result<T, CellError> {
-    // find and return errors
-    let errors = self_
+fn find_errs<C: Value + Clone>(self_: &mut OpInfo, type_err: &'static str) -> Vec<(usize, CellError)> {
+    self_
         .args
         .iter()
         .enumerate()
@@ -114,7 +113,17 @@ fn foldr<C: Value + Clone, T>(
             Expr::Err(e) => (ix + 1, e.clone()),
             _ => unreachable!(),
         })
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>() 
+}
+
+fn foldr<C: Value + Clone, T>(
+    self_: &mut OpInfo,
+    init: T,
+    f: impl Fn(T, C) -> T,
+    type_err: &'static str,
+) -> Result<T, CellError> {
+    // find and return errors
+    let errors = find_errs::<C>(self_, type_err);
 
     if errors.len() > 0 {
         return Err(CellError::FormError(errors));
@@ -125,42 +134,87 @@ fn foldr<C: Value + Clone, T>(
     }))
 }
 
+fn foldr_with_check<C: Value + Clone, T: Value>(
+    self_: &mut OpInfo,
+    init: T,
+    f: impl Fn(T, C) -> T,
+    type_err: &'static str,
+    acceptable_range: impl RangeBounds<usize>,
+) -> Expr {
+    let to_owned_bound = |b: Bound<&usize>| -> Bound<usize> {
+        match b {
+            Bound::Included(i) => Bound::Included(*i),
+            Bound::Excluded(i) => Bound::Excluded(*i),
+            Bound::Unbounded => Bound::Unbounded, 
+        }
+    };
+
+    if !acceptable_range.contains(&self_.args.len()) {
+        return Expr::Err(
+            CellError::InvalidArgCount(to_owned_bound(acceptable_range.start_bound()), self_.args.len())
+        );
+    }
+
+    foldr(
+        self_, 
+        init,
+        f,
+        type_err,
+    )
+        .map(|n| Expr::Value(Box::new(n)))
+        .unwrap_or_else(|e| Expr::Err(e)) 
+}
+
 impl Sheet {
     fn get_form_map<'a>() -> HashMap<&'a str, Form> {
         let mut map = HashMap::<&str, Form>::new();
 
         let sum = Box::new(
             |sheet: &mut Sheet, info: &mut OpInfo| {
-                if info.args.len() < 1 {
-                    return Expr::Err(CellError::InvalidArgCount(1, 0));
-                }
-
-                foldr(
-                    info, 
-                    Num::I(0), 
-                    |acc, n| acc + n, 
-                    "Num"
-                ).map(|n| Expr::Value(Box::new(n)))
-                .unwrap_or_else(|e| Expr::Err(e))
+                foldr_with_check(
+                    info,
+                    Num::I(0),
+                    |acc, n| acc + n,
+                    "Num",
+                    1..
+                )
             }
         );
 
         let mul: Form = Box::new(|sheet, info| {
-            if info.args.len() < 1 {
-                return Expr::Err(CellError::InvalidArgCount(1, 0));
-            }
-
-            foldr(
+            foldr_with_check(
                 info,
                 Num::I(1),
                 |acc, n| acc * n,
-                "Num"
-            ).map(|n| Expr::Value(Box::new(n)))
-            .unwrap_or_else(|e| Expr::Err(e))
+                "Num",
+                1..)
+        });
+
+        let div: Form = Box::new(|sheet, info| {
+            let errs = find_errs::<Num>(info, "Num");
+            if errs.len() > 0 { return Expr::Err(CellError::FormError(errs)); }
+
+            if info.args.len() != 2 { 
+                return  Expr::Err(
+                    CellError::InvalidArgCount(Bound::Included(2),
+                    info.args.len())
+                );
+            }
+
+            let arg1: Num = *info.args[0].clone().unwrap_value().downcast_ref::<Num>().unwrap();
+            let arg2 = *info.args[1].clone().unwrap_value().downcast_ref::<Num>().unwrap();
+            
+
+            if arg2 == Num::I(0) || arg2 == Num::F(0.0) { return Expr::Err(CellError::DivByZero)}
+
+            Expr::Value(Box::new(
+                arg1 / arg2
+            ))
         });
 
         map.insert("SUM", sum);
         map.insert("MULTIPLY", mul);
+        map.insert("DIVIDE", div);
 
         map
     }
@@ -193,7 +247,8 @@ impl Sheet {
                     .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
             }
             Expr::Value(v) => v.into(),
-            Expr::Err(e) => Expr::Err(CellError::RefError(vec![((0, 0).into(), e)])),
+            // TODO: actual position
+            Expr::Err(e) => Expr::Err(CellError::RefError(Box::new(e), Position { x: 0, y: 0 })),
         };
 
         self.set_unchecked(pos, new_expr);
