@@ -15,12 +15,9 @@ use super::{num::Num, CellError, Expr, OpInfo, Position};
 
 type VerboseResult<I, O, E> = Result<(I, O), nom::Err<VerboseError<E>>>;
 
-// TODO: this implementation could be improved
-// and could instead return a `&str`
-//
 // NOTE: this parser does not consider `543` to be a float
 // anything which matches `[0-9]+\.[0-9]+` is considered to be a float
-fn float1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
+fn parse_float(i: &str) -> VerboseResult<&str, Num, &'_ str> {
     let num = map(digit1, |str: &str| str);
 
     let dot_and_after = tuple((tag("."), digit1));
@@ -30,12 +27,12 @@ fn float1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
     })(i)
 }
 
-fn digit1S(i: &str) -> VerboseResult<&str, Num, &'_ str> {
+fn parse_int(i: &str) -> VerboseResult<&str, Num, &'_ str> {
     map(digit1, |s: &str| Num::I(s.parse().unwrap()))(i)
 }
 
 fn parse_num(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
-    map(alt((float1S, digit1S)), |num| num.into())(i)
+    map(alt((parse_float, parse_int)), |num| num.into())(i)
 }
 
 fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {

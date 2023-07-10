@@ -1,8 +1,8 @@
 use std::any::Any;
 use std::fmt::Debug;
+
 use dyn_ord;
 use dyn_eq::DynEq;
-
 use dyn_clone::DynClone;
 use dyn_clonable;
 

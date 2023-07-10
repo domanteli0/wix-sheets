@@ -321,7 +321,7 @@ fn parse_then_resolve_gt() {
         ],
     };
 
-    let mut sheet: Sheet = (raw.into());
+    let mut sheet: Sheet = raw.into();
     sheet.resolve_refs();
 
     assert_eq!(

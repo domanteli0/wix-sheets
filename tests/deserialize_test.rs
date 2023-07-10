@@ -1,9 +1,9 @@
-use wix_sheets::data::{RawCellData::*, RawData, RawSheet};
+use wix_sheets::data::{RawCellData::*, RawData};
 
 #[test]
 fn parses() {
     let str = include_str!("example.json");
-    let mut data: RawData = serde_json::from_str(str).unwrap();
+    let data: RawData = serde_json::from_str(str).unwrap();
 
     assert_eq!(
         data
