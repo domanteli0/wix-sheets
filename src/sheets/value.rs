@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::fmt::Debug;
+use std::fmt::{ Debug, Display };
 
 use dyn_ord;
 use dyn_eq::DynEq;
@@ -7,7 +7,7 @@ use dyn_clone::DynClone;
 use dyn_clonable;
 
 #[dyn_clonable::clonable]
-pub trait Value: Any + Debug + DynClone + DynEq + dyn_ord::DynOrd + Clone {}
+pub trait Value: Any + Debug + Display + DynClone + DynEq + dyn_ord::DynOrd + Clone { }
 // dyn_eq::eq_trait_object!(Value);
 
 impl dyn Value {

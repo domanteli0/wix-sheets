@@ -143,7 +143,6 @@ pub fn get_form_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let gt: Operator = Box::new(|_, info| {
-        let info = dbg!(info);
         let errors = info
             .args
             .iter()
@@ -205,19 +204,23 @@ pub fn get_form_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let and: Operator = Box::new(|_, info| {
-        let res = expect_two::<bool>(info, "Boolean");
-        match res {
-            Ok((arg1, arg2)) => Expr::Value(Box::new(arg1 && arg2)),
-            Err(e) => Expr::Err(e),
-        }
+        foldr_with_check(
+            info,
+            true,
+            |acc, n: bool| acc && n,
+            "String",
+            1..,
+        )
     });
 
     let or: Operator = Box::new(|_, info| {
-        let res = expect_two::<bool>(info, "Boolean");
-        match res {
-            Ok((arg1, arg2)) => Expr::Value(Box::new(arg1 || arg2)),
-            Err(e) => Expr::Err(e),
-        }
+        foldr_with_check(
+            info,
+            false,
+            |acc, n: bool| acc || n,
+            "String",
+            1..,
+        )
     });
 
     let r#if: Operator = Box::new(|_, info| {

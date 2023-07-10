@@ -1,15 +1,20 @@
 #![allow(incomplete_features)]
 
-pub mod operators;
 pub mod num;
+pub mod operators;
 pub mod parse;
 pub mod tests;
 pub mod value;
 
-use std::{collections::HashMap, fmt::Debug};
-use thiserror::Error;
 use derive_more::{From, IsVariant, Unwrap};
 use dyn_ord::{DynEq, DynOrd};
+use jsonway::{self, ObjectBuilder};
+use serde_json::value::Value as SerdeValue;
+use serde_json::map::Map as SerdeMap;
+use serde_json::Number;
+use std::convert::Into;
+use std::{collections::HashMap, fmt::Debug};
+use thiserror::Error;
 
 use self::{num::Num, value::Value};
 use crate::data::{RawCellData, RawSheet};
@@ -52,8 +57,29 @@ impl PartialEq for Expr {
         } else if self.is_ref() && rhs.is_ref() {
             self.clone().unwrap_ref() == rhs.clone().unwrap_ref()
         } else if self.is_value() == rhs.is_value() {
-            (self.clone().unwrap_value() as Box<dyn DynEq>) == (rhs.clone().unwrap_value() as Box<dyn DynEq>)
-        } else { false }
+            (self.clone().unwrap_value() as Box<dyn DynEq>)
+                == (rhs.clone().unwrap_value() as Box<dyn DynEq>)
+        } else {
+            false
+        }
+    }
+}
+
+impl Into<SerdeValue> for Expr {
+    fn into(self) -> SerdeValue {
+        match self {
+            Expr::Value(v) => {
+                if let Some(b) = v.downcast_ref::<bool>() {
+                    return SerdeValue::Bool(*b);
+                }
+                if let Some(n) = v.downcast_ref::<Num>() {
+                    return SerdeValue::Number(Number::from_f64((*n).into()).unwrap());
+                }
+                SerdeValue::String(v.to_string())
+            }
+            Expr::Err(e) => serde_json::value::Value::String(e.to_string()),
+            _ => unreachable!("Assumed resolved"),
+        }
     }
 }
 
@@ -74,7 +100,7 @@ impl From<(usize, usize)> for Position {
 
 #[derive(Error, Debug, PartialEq, Eq, Clone)]
 pub enum CellError {
-    #[error("$ERROR: Malformed formula")]
+    #[error("#ERROR: Malformed formula")]
     ParseError,
     #[error("#ERROR: Incompatible types, expected {0}")]
     TypeMismatch(&'static str),
@@ -87,9 +113,9 @@ pub enum CellError {
     InvalidArgCount(core::ops::Bound<usize>, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
-    #[error("$ERROR: Referenced cell {0} has errors {1:?}")]
+    #[error("#ERROR: Referenced cell {0} has errors {1:?}")]
     RefError(Box<CellError>, Position),
-    #[error("$#ERROR: These errors have occured in this formula: {0:?}")]
+    #[error("#ERROR: These errors have occured in this formula: {0:?}")]
     // usize - which arg, CellError - what type of error
     FormError(Vec<(usize, CellError)>),
     #[error("#ERROR: Division by zero")]
@@ -141,6 +167,44 @@ impl Sheet {
 
         self.set_unchecked(pos, new_expr);
         self.get(pos)
+    }
+}
+
+impl Into<SerdeValue> for Sheet {
+    fn into(self) -> SerdeValue {
+        let mut map: SerdeMap<String, SerdeValue> = SerdeMap::new();
+        map.insert("id".to_string(), SerdeValue::String(self.id.clone()));
+        
+        let data = self
+            .cells
+            .iter()
+            .map(|row| {
+                SerdeValue::Array(row
+                    .iter()
+                    .map(|cell| cell.clone().into())
+                    .collect::<Vec<SerdeValue>>()
+                )
+            })
+            .collect::<Vec<_>>();
+        let data = SerdeValue::Array(data);
+        map.insert("data".to_owned(), data);
+        
+        SerdeValue::Object(map)
+    }
+}
+
+impl jsonway::Serializer for Sheet {
+    fn build(&self, json: &mut ObjectBuilder) {
+        json.set("id", self.id.clone());
+        json.array("data", |j_row| {
+            self.cells.iter().for_each(|row| {
+                j_row.array(|j_cell| {
+                    row.iter().for_each(|cell| {
+                        j_cell.push_json(cell.clone().into());
+                    });
+                })
+            });
+        });
     }
 }
 
