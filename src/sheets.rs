@@ -72,7 +72,7 @@ pub enum CellError {
     NoOpFound(String),
     #[error("#ERROR: Referenced cell {0} has errors {1:?}")]
     RefError(Box<CellError>, Position),
-    #[error("#ERROR: These errors have occured in this formula: {0:?}")]
+    #[error("#ERROR: These errors have occurred in this formula: {0:?}")]
     // usize - which arg, CellError - what type of error
     FormError(Vec<(usize, CellError)>),
     #[error("#ERROR: Division by zero")]
@@ -84,7 +84,7 @@ pub struct OpInfo {
     // This could be a `&str` but then `RawCellData` needs to
     // to take a reference to `str` too instead holding a `String`
     // in order to take over the reference
-    // instead of droping the string then moving RawSheet in [Sheet::from]
+    // instead of dropping the string then moving RawSheet in [Sheet::from]
     pub name: String,
     pub args: Vec<Expr>,
 }
@@ -113,16 +113,13 @@ impl Sheet {
                 .unwrap_or(&Expr::Err(CellError::InvalidReference))
                 .clone(),
             Expr::Form(mut op_info) => {
-                let mut map = operators::get_default_op_map();
-
                 op_info.resolve_with_sheet(self, ops);
 
-                map.get_mut(&op_info.name[..])
+                ops.get_mut(&op_info.name[..])
                     .map(|o| o(self, &mut op_info))
                     .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
             }
             Expr::Value(v) => v.into(),
-            // TODO: actual position
             Expr::Err(e) => Expr::Err(CellError::RefError(Box::new(e), Position { x: 0, y: 0 })),
         };
 
@@ -192,10 +189,7 @@ impl OpInfo {
                 Expr::Form(op_info) => {
                     op_info.resolve_with_sheet(sheet, ops);
 
-                    // actually calc
-                    // TODO: move this somewhere else as not to re-create
-                    // the whole hashmap everytime
-                    operators::get_default_op_map()
+                    ops
                         .get_mut(&op_info.name[..])
                         .map(|o| o(sheet, op_info))
                         .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())

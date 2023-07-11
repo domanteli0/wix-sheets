@@ -6,12 +6,11 @@ pub mod Data; // rust-analyzer acts funky without this line
 pub mod data;
 pub mod sheets;
 
-use std::collections::HashMap;
 use std::{convert::Into, env, error::Error};
 
 use jsonway::{ObjectBuilder, Serializer};
 use reqwest;
-use serde_json::{self, ser::Formatter};
+use serde_json;
 use wix_sheets::{data::RawData, sheets::Sheet};
 
 const HUB_URL_GET: &'static str =

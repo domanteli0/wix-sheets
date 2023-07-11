@@ -15,7 +15,7 @@ pub enum Num {
     I(i64),
 }
 
-impl PartialOrd for Num {
+impl PartialOrd<Num> for Num {
     fn partial_cmp(&self, rhs: &Num) -> Option<std::cmp::Ordering> {
         match self {
             Num::I(i1) => match rhs {

@@ -12,7 +12,30 @@ pub enum Expr {
     Err(CellError),
 }
 
-impl PartialEq for Expr {
+impl Expr {
+    pub fn unwrap_value_ref(&self) -> &Box<dyn Value> {
+        match self {
+            Expr::Value(v) => v,
+            _ => panic!("unwrap_value on a Expr with is not Value")
+        }
+    }
+
+    pub fn unwrap_err_ref(&self) -> &CellError {
+        match self {
+            Expr::Err(e) => e,
+            _ => panic!("unwrap_err on a Expr with is not Err")
+        }
+    }
+
+    pub fn map_value_mut(&mut self, f: impl FnOnce(&mut Box<dyn Value>)) {
+        match self {
+            Expr::Value(v) => f(v),
+            _ => {},
+        }
+    }
+}
+
+impl PartialEq<Expr> for Expr {
     fn eq(&self, rhs: &Expr) -> bool {
         if self.is_err() && rhs.is_err() {
             self.clone().unwrap_err() == rhs.clone().unwrap_err()

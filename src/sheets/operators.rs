@@ -12,6 +12,37 @@ fn to_owned_bound(b: Bound<&usize>) -> Bound<usize> {
     }
 }
 
+fn find_errors<'a>(self_: &'a OpInfo) -> impl Iterator<Item = (usize, &'a CellError)> {
+    self_
+        .args
+        .iter()
+        .enumerate()
+        .filter(|(_, expr)| expr.is_err())
+        .map(|(ix, expr): (_, &Expr)| (ix, expr.unwrap_err_ref()))
+}
+
+fn has_errors<'a>(self_: &'a OpInfo) -> Option<Vec<(usize, &'a CellError)>> {
+    let errors: Vec<_> = find_errors(self_).collect();
+
+    if errors.len() > 0 {
+        Some(errors)
+    } else {
+        None
+    }
+}
+
+fn type_check<'a, C: Value>(
+    self_: &'a OpInfo,
+    type_err: &'static str,
+) -> impl Iterator<Item = (usize, CellError)> + 'a {
+    self_
+        .args
+        .iter()
+        .enumerate()
+        .filter(|(_, expr)| expr.unwrap_value_ref().downcast_ref::<C>().is_none())
+        .map(move |(ix, _): (_, &Expr)| (ix + 1, CellError::TypeMismatch(type_err)))
+}
+
 fn find_errs<C: Value + Clone>(
     self_: &mut OpInfo,
     type_err: &'static str,
@@ -20,15 +51,7 @@ fn find_errs<C: Value + Clone>(
         .args
         .iter()
         .enumerate()
-        .filter(|(_, expr)| {
-            expr.is_err()
-                || expr
-                    .clone()
-                    .clone()
-                    .unwrap_value()
-                    .downcast_ref::<C>()
-                    .is_none()
-        })
+        .filter(|(_, expr)| expr.is_err() || expr.unwrap_value_ref().downcast_ref::<C>().is_none())
         .map(|(ix, expr): (_, &Expr)| match expr {
             Expr::Value(_) => (ix + 1, CellError::TypeMismatch(type_err)),
             Expr::Err(e) => (ix + 1, e.clone()),
@@ -54,13 +77,10 @@ fn expect_n<'a, T: Value + Clone>(
         ));
     }
 
-    Ok(self_.args.iter().map(|e| {
-        e.clone()
-            .unwrap_value()
-            .downcast_ref::<T>()
-            .unwrap()
-            .clone()
-    }))
+    Ok(self_
+        .args
+        .iter()
+        .map(|e| e.unwrap_value_ref().downcast_ref::<T>().unwrap().clone()))
 }
 
 fn expect_two<'a, T: Value + Clone>(
@@ -90,11 +110,7 @@ fn foldr<C: Value + Clone, T>(
     Ok(self_.args.iter().fold(init, |acc, e| {
         f(
             acc,
-            e.clone()
-                .unwrap_value()
-                .downcast_ref::<C>()
-                .unwrap()
-                .clone(),
+            e.unwrap_value_ref().downcast_ref::<C>().unwrap().clone(),
         )
     }))
 }
@@ -119,8 +135,6 @@ fn foldr_with_check<C: Value + Clone, T: Value>(
 }
 
 pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
-    let mut map = HashMap::<&str, Operator>::new();
-
     let sum = Box::new(|_: &mut _, info: &mut OpInfo| {
         foldr_with_check(info, Num::I(0), |acc, n| acc + n, "Num", 1..)
     });
@@ -143,17 +157,14 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let gt: Operator = Box::new(|_, info| {
-        let errors = info
-            .args
-            .iter()
-            .enumerate()
-            .filter(|(_, expr)| expr.is_err())
-            .map(|(ix, expr): (_, &Expr)| (ix + 1, expr.clone().unwrap_err().clone()))
+        let errors = find_errors(info)
+            .map(|(u, e)| (u, e.clone()))
             .collect::<Vec<_>>();
 
         if errors.len() > 0 {
             return Expr::Err(CellError::FormError(errors));
         }
+
         if info.args.len() != 2 {
             return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
         }
@@ -170,12 +181,8 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
 
     let eq: Operator = Box::new({
         |_, info| {
-            let errors = info
-                .args
-                .iter()
-                .enumerate()
-                .filter(|(_, expr)| expr.is_err())
-                .map(|(ix, expr): (_, &Expr)| (ix + 1, expr.clone().unwrap_err().clone()))
+            let errors = find_errors(info)
+                .map(|(u, e)| (u, e.clone()))
                 .collect::<Vec<_>>();
 
             if errors.len() > 0 {
@@ -185,8 +192,8 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
                 return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
             }
 
-            let arg1 = info.args.get(0).unwrap().clone().unwrap_value();
-            let arg2 = info.args.get(1).unwrap().clone().unwrap_value();
+            let arg1 = info.args[0].unwrap_value_ref();
+            let arg2 = info.args[1].unwrap_value_ref();
             if arg1.type_id() != arg2.type_id() {
                 return Expr::Err(CellError::BinaryTypeMismatch.into());
             }
@@ -203,33 +210,15 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         }
     });
 
-    let and: Operator = Box::new(|_, info| {
-        foldr_with_check(
-            info,
-            true,
-            |acc, n: bool| acc && n,
-            "String",
-            1..,
-        )
-    });
+    let and: Operator =
+        Box::new(|_, info| foldr_with_check(info, true, |acc, n: bool| acc && n, "String", 1..));
 
-    let or: Operator = Box::new(|_, info| {
-        foldr_with_check(
-            info,
-            false,
-            |acc, n: bool| acc || n,
-            "String",
-            1..,
-        )
-    });
+    let or: Operator =
+        Box::new(|_, info| foldr_with_check(info, false, |acc, n: bool| acc || n, "String", 1..));
 
     let r#if: Operator = Box::new(|_, info| {
-        let errors = info
-            .args
-            .iter()
-            .enumerate()
-            .filter(|(_, expr)| expr.is_err())
-            .map(|(ix, expr): (_, &Expr)| (ix + 1, expr.clone().unwrap_err().clone()))
+        let errors = find_errors(info)
+            .map(|(u, e)| (u, e.clone()))
             .collect::<Vec<_>>();
 
         if errors.len() > 0 {
@@ -240,15 +229,15 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
         }
 
-        let binding = info.args[0].clone().unwrap_value();
+        let binding = info.args[0].unwrap_value_ref();
         let cond = binding.downcast_ref::<bool>();
         if cond.is_none() {
             return Expr::Err(CellError::TypeMismatch("String"));
         }
         let cond = cond.unwrap();
 
-        let arg1 = info.args[1].clone().unwrap_value();
-        let arg2 = info.args[2].clone().unwrap_value();
+        let arg1 = info.args[1].unwrap_value_ref();
+        let arg2 = info.args[2].unwrap_value_ref();
         if arg1.type_id() != arg2.type_id() {
             return Expr::Err(CellError::BinaryTypeMismatch.into());
         }
@@ -265,16 +254,18 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         ) // Spec does not mention min args, I'll assume 0
     });
 
-    map.insert("SUM", sum);
-    map.insert("MULTIPLY", mul);
-    map.insert("DIVIDE", div);
-    map.insert("GT", gt);
-    map.insert("EQ", eq);
-    map.insert("NOT", not);
-    map.insert("AND", and);
-    map.insert("OR", or);
-    map.insert("IF", r#if);
-    map.insert("CONCAT", concat);
 
-    map
+
+    HashMap::from([
+        ("MULTIPLY", mul),
+        ("SUM", sum),
+        ("DIVIDE", div),
+        ("GT", gt),
+        ("EQ", eq),
+        ("NOT", not),
+        ("AND", and),
+        ("OR", or),
+        ("IF", r#if),
+        ("CONCAT", concat),
+    ])
 }

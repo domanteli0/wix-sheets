@@ -21,14 +21,3 @@ pub enum RawCellData {
     Float(f64),
     Bool(bool)
 }
-
-impl RawCellData {
-    fn get_str(&self) -> Option<&str> {
-        if let RawCellData::String(s) = self { Some(s) }
-        else { None }
-    }
-
-    fn swap(&mut self, mut other: Self) {
-        std::mem::swap(self, &mut other);
-    }
-}
