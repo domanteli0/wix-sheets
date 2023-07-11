@@ -8,6 +8,7 @@ use dyn_eq::DynEq;
 use dyn_ord;
 
 #[dyn_clonable::clonable]
+/// This trait is implemented for any type which can be used as a value in a cell
 pub trait Value:
     Any + Debug + Display + DynClone + DynEq + dyn_ord::DynOrd + Clone + Downcast { }
 impl_downcast!(Value);

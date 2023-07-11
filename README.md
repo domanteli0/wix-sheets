@@ -1,22 +1,9 @@
 # wix-sheets
-super secter passcode: e5a410f39e91ec4f57264ff8e6428115
 
-## Time tracking
+# How to run
 
-07-03
-* Init commit - Parsing implemented
-* 20:20 - fixed submissionUrl parsing
-* 20:35 - added a test
-* @last + 2min - added an additional test
-* @last - implemented data fetching from wix
+1. Install [`rustup`](https://rustup.rs)
+2. Run with `cargo run -- example@example.com`
+3. Run tests with `cargo test`
 
-07-05
-* 19:34 - some type modelling
-
-07-07 - 07-08
-* 18:54 - 19:10 & 22:17 - implemented parsing of formula cells
-
-07-09:
-* 0:33 - finished parser implementation
-* 19:03 - implemented resolving of refs
-* 21:37 - imeplemented rudamental revolving of formulas
+If for some reason cargo compiles with the stable version of rust, use `cargo +nightly-2023-07-06 run -- example@example.com` and `cargo +nightly-2023-07-06 test` to build this project.

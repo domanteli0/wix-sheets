@@ -8,7 +8,6 @@ pub mod value;
 pub mod expr;
 
 use dyn_ord::{DynEq, DynOrd};
-use jsonway::{self, ObjectBuilder};
 use serde_json::map::Map as SerdeMap;
 use serde_json::value::Value as SerdeValue;
 use std::convert::Into;
@@ -19,6 +18,7 @@ use self::expr::*;
 use self::{num::Num, value::Value};
 use crate::data::{RawCellData, RawSheet};
 
+/// Contains all cells of a sheet
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
     pub id: String,
@@ -91,6 +91,8 @@ pub struct OpInfo {
 
 impl Sheet {
     // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
+    /// Computes all fields, i.e. turns all values into constant values
+    /// by computing formulas
     pub fn resolve_refs(&mut self, ops: &mut HashMap<&'static str, operators::Operator>) {
         for iy in 0..self.cells.len() {
             for jx in 0..self.cells[iy].len() {
@@ -128,43 +130,6 @@ impl Sheet {
     }
 }
 
-impl Into<SerdeValue> for Sheet {
-    fn into(self) -> SerdeValue {
-        let mut map: SerdeMap<String, SerdeValue> = SerdeMap::new();
-        map.insert("id".to_string(), SerdeValue::String(self.id.clone()));
-
-        let data = self
-            .cells
-            .iter()
-            .map(|row| {
-                SerdeValue::Array(
-                    row.iter()
-                        .map(|cell| cell.clone().into())
-                        .collect::<Vec<SerdeValue>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let data = SerdeValue::Array(data);
-        map.insert("data".to_owned(), data);
-
-        SerdeValue::Object(map)
-    }
-}
-
-impl jsonway::Serializer for Sheet {
-    fn build(&self, json: &mut ObjectBuilder) {
-        json.set("id", self.id.clone());
-        json.array("data", |j_row| {
-            self.cells.iter().for_each(|row| {
-                j_row.array(|j_cell| {
-                    row.iter().for_each(|cell| {
-                        j_cell.push_json(cell.clone().into());
-                    });
-                })
-            });
-        });
-    }
-}
 
 impl OpInfo {
     // after this is called `self` should only contain
@@ -230,5 +195,29 @@ impl<'a> From<RawCellData> for Expr {
                 Err(_) => Expr::Err(CellError::ParseError),
             },
         }
+    }
+}
+
+/// This impl is used for serialization
+impl Into<SerdeValue> for Sheet {
+    fn into(self) -> SerdeValue {
+        let mut map: SerdeMap<String, SerdeValue> = SerdeMap::new();
+        map.insert("id".to_string(), SerdeValue::String(self.id.clone()));
+
+        let data = self
+            .cells
+            .iter()
+            .map(|row| {
+                SerdeValue::Array(
+                    row.iter()
+                        .map(|cell| cell.clone().into())
+                        .collect::<Vec<SerdeValue>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let data = SerdeValue::Array(data);
+        map.insert("data".to_owned(), data);
+
+        SerdeValue::Object(map)
     }
 }

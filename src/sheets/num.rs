@@ -1,3 +1,5 @@
+//! Contains number value implementation 
+
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign};
 
 use derive_more::{self, Display, From};
@@ -5,8 +7,6 @@ use derive_more::{self, Display, From};
 use super::{value::Value, Expr};
 
 impl Value for Num {}
-// This newtype allows to change the underlying implementation
-// #[typetag::serde]
 #[derive(Debug, Clone, Copy, Display, From)]
 pub enum Num {
     #[display(fmt = "{}", _0.display())]

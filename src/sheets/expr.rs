@@ -3,8 +3,9 @@ use derive_more::{From, IsVariant, Unwrap};
 
 use super::*;
 
+/// `Expr`, short for expression, which represents
+/// all possible values which a cell can contain 
 #[derive(Debug, Clone, From, IsVariant, Unwrap)]
-// TODO: implement unwrap_value such that it moves self, reducing cloning
 pub enum Expr {
     Value(Box<dyn Value>),
     Ref(Position),
@@ -52,6 +53,7 @@ impl PartialEq<Expr> for Expr {
     }
 }
 
+/// This impl is used for serialization
 impl Into<SerdeValue> for Expr {
     fn into(self) -> SerdeValue {
         match self {

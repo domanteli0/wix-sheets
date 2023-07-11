@@ -1,5 +1,4 @@
 #![feature(trait_upcasting)]
-#![feature(downcast_unchecked)]
 #![allow(incomplete_features)]
 
 pub mod Data; // rust-analyzer acts funky without this line
@@ -47,6 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         s.resolve_refs(&mut ops);
     }
 
+    // serialize and send
     let mut results = Results {
         email: env::args()
             .collect::<Vec<_>>()
@@ -64,6 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let res = req.send()?;
 
+    // response
     println!("{:#?}", &res);
     println!("{}", res.text()?);
 

@@ -1,5 +1,4 @@
 #![feature(trait_upcasting)]
-#![feature(downcast_unchecked)]
 #![allow(incomplete_features)]
 
 pub mod data;

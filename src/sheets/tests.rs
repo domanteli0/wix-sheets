@@ -1,3 +1,5 @@
+//! This is a module for tests
+
 use super::*;
 
 #[test]

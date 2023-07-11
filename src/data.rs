@@ -1,3 +1,6 @@
+//! This module contains ADTs used for deserialization
+//! for data received from wix
+
 use serde::Deserialize;
 
 #[derive(Debug, PartialEq, Deserialize)]

@@ -1,3 +1,5 @@
+//! Contains parsers for formulas
+
 use nom::{
     branch::alt,
     bytes::{

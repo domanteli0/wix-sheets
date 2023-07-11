@@ -1,3 +1,5 @@
+//! Contains implementations of operators
+
 use std::ops::{Bound, RangeBounds};
 
 use super::*;
@@ -19,28 +21,6 @@ fn find_errors<'a>(self_: &'a OpInfo) -> impl Iterator<Item = (usize, &'a CellEr
         .enumerate()
         .filter(|(_, expr)| expr.is_err())
         .map(|(ix, expr): (_, &Expr)| (ix, expr.unwrap_err_ref()))
-}
-
-fn has_errors<'a>(self_: &'a OpInfo) -> Option<Vec<(usize, &'a CellError)>> {
-    let errors: Vec<_> = find_errors(self_).collect();
-
-    if errors.len() > 0 {
-        Some(errors)
-    } else {
-        None
-    }
-}
-
-fn type_check<'a, C: Value>(
-    self_: &'a OpInfo,
-    type_err: &'static str,
-) -> impl Iterator<Item = (usize, CellError)> + 'a {
-    self_
-        .args
-        .iter()
-        .enumerate()
-        .filter(|(_, expr)| expr.unwrap_value_ref().downcast_ref::<C>().is_none())
-        .map(move |(ix, _): (_, &Expr)| (ix + 1, CellError::TypeMismatch(type_err)))
 }
 
 fn find_errs<C: Value + Clone>(
@@ -253,8 +233,6 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             0..,
         ) // Spec does not mention min args, I'll assume 0
     });
-
-
 
     HashMap::from([
         ("MULTIPLY", mul),
