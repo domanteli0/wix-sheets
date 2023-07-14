@@ -1,16 +1,170 @@
 //! Contains implementations of operators
 
-use std::ops::{Bound, RangeBounds};
-
 use super::*;
+use std::any::TypeId;
+use std::ops::RangeInclusive;
 
 pub type Operator = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Expr>;
+// type ErrHandler = (
+//     RangeInclusive<usize>,
+//     Box<dyn FnMut(&[Expr]) -> Box<dyn Iterator<Item = CellError>>>,
+// );
 
-fn to_owned_bound(b: Bound<&usize>) -> Bound<usize> {
-    match b {
-        Bound::Included(i) => Bound::Included(*i),
-        Bound::Excluded(i) => Bound::Excluded(*i),
-        Bound::Unbounded => Bound::Unbounded,
+type TypeHandler = (RangeInclusive<usize>, TypeId, &'static str);
+
+type ValueHandler = Box<dyn FnMut(&[BoxValue]) -> Expr>;
+type ExprHandler = Box<dyn FnMut(&[&Expr]) -> Expr>;
+
+/// This guarantees that the number of `Expr`s provided to
+/// `Handler` is at least: `handler.0.start() - expect_args.start()`
+///
+/// `TypeHandler`s are run if no err_handler has returned any errors
+/// and argument count matched `expect_args`
+///
+/// NOTE: `TypeHandler`s expect all `Expr`s to be `Value`
+/// otherwise it will panic
+///
+/// Current issues:
+/// * it is possible to accidentally provide incorrect type_handlers
+///     which will probably cause panics as ValueHandler will expect certain types
+struct ErrorHandler {
+    expect_args: RangeInclusive<usize>,
+    // err_handlers: Vec<ErrHandler>,
+    type_handlers: Vec<TypeHandler>,
+    val_handler: ValueHandler,
+    expr_handler: ExprHandler,
+}
+
+const MAX_ARGS: usize = u32::MAX as usize;
+
+trait GetRange<T> {
+    // fn get_range_mut(&mut self, range: &RangeInclusive<usize>) -> &mut [T];
+    fn get_range(&self, range: &RangeInclusive<usize>) -> &[T];
+}
+
+impl<T> GetRange<T> for Vec<T> {
+    fn get_range(&self, range: &RangeInclusive<usize>) -> &[T] {
+        let split1 = range.start();
+        let split2 = range.end() - range.start();
+        let len = self.len() as usize - 1;
+        let (_, right) = self.split_at(len.min(*split1));
+
+        let len = right.len();
+        let (left, _) = right.split_at(len.min(split2));
+
+        left
+    }
+}
+
+impl ErrorHandler {
+    fn new(expect_args: RangeInclusive<usize>) -> Self {
+        ErrorHandler {
+            expect_args,
+            // err_handlers: Vec::new(),
+            type_handlers: Vec::new(),
+            val_handler: Box::new(|_| panic!("Forgot to add val_handler")),
+            expr_handler: Box::new(|_| panic!("Forgot to add val_handler")),
+        }
+    }
+
+    // fn add_err_handler(&mut self, handler: ErrHandler) -> &mut Self {
+    //     self.err_handlers.push(handler);
+    //     self
+    // }
+
+    fn add_type_handler(mut self, handler: TypeHandler) -> Self {
+        self.type_handlers.push(handler);
+        self
+    }
+
+    fn add_value_handler(mut self, handler: ValueHandler) -> Self {
+        self.val_handler = Box::new(handler);
+        self
+    }
+
+    fn add_expr_handler(mut self, handler: ExprHandler) -> Self {
+        self.expr_handler = Box::new(handler);
+        self
+    }
+
+    fn handle_as_expr(mut self, op_info: &OpInfo) -> Expr {
+        let len = op_info.args.len();
+        let expect = &self.expect_args;
+
+        if !expect.contains(&len) {
+            return Expr::Err(CellError::InvalidArgCount(expect.clone(), len));
+        }
+
+        // for (range, handler) in self.err_handlers.iter_mut() {
+        //     let args = op_info.args.get_range(range);
+        //     errs.extend(handler(args));
+        // }
+
+        // if errs.len() > 0 {
+        //     return Expr::from(CellError::FormError(errs));
+        // }
+
+        let mut errs: Vec<(usize, _)> = Vec::new();
+        for (range, expected_type, expected_type_name) in self.type_handlers.iter_mut() {
+            let enumerated = op_info.args.iter().enumerate().collect::<Vec<_>>();
+            let args = enumerated.get_range(range);
+            for (pos, expr) in args.iter() {
+                let expr = expr.unwrap_value_ref();
+                if (*expr).type_id() != *expected_type {
+                    errs.push((*pos, CellError::TypeMismatch(expected_type_name)));
+                }
+            }
+        }
+
+        if errs.len() > 0 {
+            return Expr::Err(CellError::FormError(errs));
+        }
+
+        let mut handler = self.expr_handler;
+        handler(&op_info.args.iter().collect::<Vec<_>>()[..])
+    }
+
+    fn handle(mut self, op_info: &OpInfo) -> Expr {
+        let len = op_info.args.len();
+        let expect = &self.expect_args;
+
+        if !expect.contains(&len) {
+            return Expr::Err(CellError::InvalidArgCount(expect.clone(), len));
+        }
+
+        // for (range, handler) in self.err_handlers.iter_mut() {
+        //     let args = op_info.args.get_range(range);
+        //     errs.extend(handler(args));
+        // }
+
+        // if errs.len() > 0 {
+        //     return Expr::from(CellError::FormError(errs));
+        // }
+
+        let mut errs: Vec<(usize, _)> = Vec::new();
+        for (range, expected_type, expected_type_name) in self.type_handlers.iter_mut() {
+            let enumerated = op_info.args.iter().enumerate().collect::<Vec<_>>();
+            let args = enumerated.get_range(range);
+            for (pos, expr) in args.iter() {
+                let expr = expr.unwrap_value_ref();
+                if (*expr).type_id() != *expected_type {
+                    errs.push((*pos, CellError::TypeMismatch(expected_type_name)));
+                }
+            }
+        }
+
+        if errs.len() > 0 {
+            return Expr::Err(CellError::FormError(errs));
+        }
+
+        let mut handler = self.val_handler;
+        handler(
+            &op_info
+                .args
+                .iter()
+                .map(|e| e.unwrap_value_ref().clone())
+                .collect::<Vec<_>>()[..],
+        )
     }
 }
 
@@ -43,7 +197,7 @@ fn find_errs<C: Value + Clone>(
 fn expect_n<'a, T: Value + Clone>(
     self_: &'a mut OpInfo,
     type_err: &'static str,
-    acceptable_range: impl RangeBounds<usize>,
+    acceptable_range: RangeInclusive<usize>,
 ) -> Result<impl Iterator<Item = T> + 'a, CellError> {
     let errors = find_errs::<T>(self_, type_err);
     if errors.len() > 0 {
@@ -52,7 +206,7 @@ fn expect_n<'a, T: Value + Clone>(
 
     if !acceptable_range.contains(&self_.args.len()) {
         return Err(CellError::InvalidArgCount(
-            to_owned_bound(acceptable_range.start_bound()),
+            acceptable_range,
             self_.args.len(),
         ));
     }
@@ -100,84 +254,79 @@ fn foldr_with_check<C: Value + Clone, T: Value>(
     init: T,
     f: impl Fn(T, C) -> T,
     type_err: &'static str,
-    acceptable_range: impl RangeBounds<usize>,
+    acceptable_range: RangeInclusive<usize>,
 ) -> Expr {
     if !acceptable_range.contains(&self_.args.len()) {
         return Expr::Err(CellError::InvalidArgCount(
-            to_owned_bound(acceptable_range.start_bound()),
+            acceptable_range,
             self_.args.len(),
         ));
     }
 
     foldr(self_, init, f, type_err)
-        .map(|n| Expr::Value(Box::new(n)))
+        .map(|n| Expr::Value(n.into()))
         .unwrap_or_else(|e| Expr::Err(e))
 }
 
 pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     let sum = Box::new(|_: &mut _, info: &mut OpInfo| {
-        foldr_with_check(info, Num::I(0), |acc, n| acc + n, "Num", 1..)
+        foldr_with_check(info, Num::I(0), |acc, n| acc + n, "Num", 1..=MAX_ARGS)
     });
 
-    let mul: Operator =
-        Box::new(|_, info| foldr_with_check(info, Num::I(1), |acc, n| acc * n, "Num", 1..));
+    let mul: Operator = Box::new(|_, info| {
+        foldr_with_check(info, Num::I(1), |acc, n| acc * n, "Num", 1..=MAX_ARGS)
+    });
 
     let div: Operator = Box::new(|_, info| {
-        let res = expect_two::<Num>(info, "Num");
-        match res {
-            Ok((arg1, arg2)) => {
-                if arg2 == Num::I(0) || arg2 == Num::F(0.0) {
+        ErrorHandler::new(2..=2)
+            .add_type_handler((
+                2..=2,
+                {
+                    let b: Box<dyn Value> = Box::new(Num::I(0));
+                    b.type_id()
+                },
+                "Num",
+            ))
+            .add_value_handler(Box::new(|args: &[BoxValue]| {
+                let arg1 = &args[0].downcast_ref::<Num>().unwrap();
+                let arg2 = &args[1].downcast_ref::<Num>().unwrap();
+
+                if arg2 == &&Num::I(0) || arg2 == &&Num::F(0.0) {
                     return Expr::Err(CellError::DivByZero);
                 }
 
-                Expr::Value(Box::new(arg1 / arg2))
-            }
-            Err(e) => Expr::Err(e),
-        }
+                Expr::Value((**arg1 / **arg2).into())
+            }))
+            .handle(info)
     });
 
     let gt: Operator = Box::new(|_, info| {
-        let errors = find_errors(info)
-            .map(|(u, e)| (u, e.clone()))
-            .collect::<Vec<_>>();
-
-        if errors.len() > 0 {
-            return Expr::Err(CellError::FormError(errors));
-        }
-
-        if info.args.len() != 2 {
-            return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
-        }
-
-        let arg1 = info.args.get(0).unwrap().clone().unwrap_value();
-        let arg2 = info.args.get(1).unwrap().clone().unwrap_value();
-        if arg1.type_id() != arg2.type_id() {
-            return Expr::Err(CellError::BinaryTypeMismatch.into());
-        }
-        Expr::Value(Box::new(
-            (arg1 as Box<dyn DynOrd>) > (arg2 as Box<dyn DynOrd>),
-        ))
+        ErrorHandler::new(2..=2)
+            .add_value_handler(Box::new(|args: &[BoxValue]| {
+                let arg1 = &args[0];
+                let arg2 = &args[1];
+                if arg1.type_id() != arg2.type_id() {
+                    return Expr::Err(CellError::BinaryTypeMismatch.into());
+                }
+                Expr::Value((
+                    arg1 > arg2
+                ).into())
+            }))
+            .handle(info)
     });
 
     let eq: Operator = Box::new({
         |_, info| {
-            let errors = find_errors(info)
-                .map(|(u, e)| (u, e.clone()))
-                .collect::<Vec<_>>();
-
-            if errors.len() > 0 {
-                return Expr::Err(CellError::FormError(errors));
-            }
-            if info.args.len() != 2 {
-                return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
-            }
-
-            let arg1 = info.args[0].unwrap_value_ref();
-            let arg2 = info.args[1].unwrap_value_ref();
-            if arg1.type_id() != arg2.type_id() {
-                return Expr::Err(CellError::BinaryTypeMismatch.into());
-            }
-            Expr::Value(Box::new(info.args.get(0) == info.args.get(1)))
+            ErrorHandler::new(2..=2)
+                .add_expr_handler(Box::new(|args: &[&Expr]| {
+                    let arg1 = args[0].unwrap_value_ref();
+                    let arg2 = args[1].unwrap_value_ref();
+                    if arg1.type_id() != arg2.type_id() {
+                        return Expr::Err(CellError::BinaryTypeMismatch.into());
+                    }
+                    Expr::Value((args.get(0) == args.get(1)).into())
+                }))
+                .handle_as_expr(info)
         }
     });
 
@@ -185,43 +334,41 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         let res = expect_n::<bool>(info, "Boolean", 1..=1);
 
         match res {
-            Ok(mut arg_iter) => Expr::Value(Box::new(!arg_iter.next().unwrap())),
+            Ok(mut arg_iter) => Expr::Value((!arg_iter.next().unwrap()).into()),
             Err(e) => Expr::Err(e),
         }
     });
 
-    let and: Operator =
-        Box::new(|_, info| foldr_with_check(info, true, |acc, n: bool| acc && n, "String", 1..));
+    let and: Operator = Box::new(|_, info| {
+        foldr_with_check(info, true, |acc, n: bool| acc && n, "String", 1..=MAX_ARGS)
+    });
 
-    let or: Operator =
-        Box::new(|_, info| foldr_with_check(info, false, |acc, n: bool| acc || n, "String", 1..));
+    let or: Operator = Box::new(|_, info| {
+        foldr_with_check(info, false, |acc, n: bool| acc || n, "String", 1..=MAX_ARGS)
+    });
 
     let r#if: Operator = Box::new(|_, info| {
-        let errors = find_errors(info)
-            .map(|(u, e)| (u, e.clone()))
-            .collect::<Vec<_>>();
-
-        if errors.len() > 0 {
-            return Expr::Err(CellError::FormError(errors));
-        }
-
-        if info.args.len() != 3 {
-            return Expr::Err(CellError::InvalidArgCount(Bound::Included(2), 2));
-        }
-
-        let binding = info.args[0].unwrap_value_ref();
-        let cond = binding.downcast_ref::<bool>();
-        if cond.is_none() {
-            return Expr::Err(CellError::TypeMismatch("String"));
-        }
-        let cond = cond.unwrap();
-
-        let arg1 = info.args[1].unwrap_value_ref();
-        let arg2 = info.args[2].unwrap_value_ref();
-        if arg1.type_id() != arg2.type_id() {
-            return Expr::Err(CellError::BinaryTypeMismatch.into());
-        }
-        Expr::Value(if *cond { arg1.clone() } else { arg2.clone() })
+        ErrorHandler::new(3..=3)
+            .add_type_handler((
+                0..=0,
+                {
+                    let b: Box<dyn Value> = Box::new(false);
+                    b.type_id()
+                },
+                "Boolean"
+            ))
+            .add_value_handler(Box::new(|args| {
+                let cond = args[0].downcast_ref::<bool>();
+                let cond = cond.unwrap();
+        
+                let arg1 = &args[1];
+                let arg2 = &args[2];
+                if arg1.type_id() != arg2.type_id() {
+                    return Expr::Err(CellError::BinaryTypeMismatch.into());
+                }
+                Expr::Value(if *cond { arg1.clone().into() } else { arg2.clone().into() })
+            }))
+            .handle(info)
     });
 
     let concat: Operator = Box::new(|_, info| {
@@ -230,7 +377,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             String::from(""),
             |acc, n: String| acc + &n[..],
             "String",
-            0..,
+            0..=MAX_ARGS,
         ) // Spec does not mention min args, I'll assume 0
     });
 

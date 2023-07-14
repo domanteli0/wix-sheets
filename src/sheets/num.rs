@@ -130,15 +130,3 @@ impl Into<f64> for Num {
         }
     }
 }
-
-impl Into<Box<dyn Value>> for Num {
-    fn into(self) -> Box<dyn Value> {
-        Box::new(self)
-    }
-}
-
-impl From<Num> for Expr {
-    fn from(value: Num) -> Self {
-        Expr::Value(value.into())
-    }
-}

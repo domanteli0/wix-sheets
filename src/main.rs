@@ -1,7 +1,6 @@
 #![feature(trait_upcasting)]
 #![allow(incomplete_features)]
 
-pub mod Data; // rust-analyzer acts funky without this line
 pub mod data;
 pub mod sheets;
 

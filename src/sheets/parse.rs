@@ -53,11 +53,10 @@ fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
         if pos.y == 0 {
             CellError::InvalidReference.into()
         } else {
-            Position {
+            Expr::Ref(Position {
                 y: pos.y - 1,
                 ..pos
-            }
-            .into()
+            })
         }
     })(i)
 }
@@ -65,13 +64,13 @@ fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
 fn parse_str(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     map(
         tuple((tag("\""), take_while(|c| c != '"'), tag("\""))),
-        |(_, s, _): (_, &str, _)| Expr::Value(Box::new(s.to_owned())),
+        |(_, s, _): (_, &str, _)| Expr::Value(s.to_owned().into()),
     )(i)
 }
 
 fn parse_bool(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     map(alt((tag("false"), tag("true"))), |s: &str| {
-        Expr::Value(Box::new(s.starts_with('t')))
+        Expr::Value(s.starts_with('t').into())
     })(i)
 }
 
@@ -107,9 +106,9 @@ fn parse_fn(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
 pub fn parse_entry(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
     match i.starts_with('=') {
         false => map(
-            alt((
-                parse_bool,
-                |s: &str| Ok(("", Expr::Value(Box::new(s.to_owned())))))),
+            alt((parse_bool, |s: &str| {
+                Ok(("", Expr::Value(s.to_owned().into())))
+            })),
             |expr| expr,
         )(i),
         true => map(
@@ -144,7 +143,7 @@ mod tests {
 
         assert_eq!(
             parsed.1.as_value_unchecked().downcast_ref::<String>(),
-            Expr::Value(Box::new("lol".to_owned()))
+            Expr::Value("lol".to_owned().into())
                 .as_value_unchecked()
                 .downcast_ref()
         );
@@ -167,7 +166,7 @@ mod tests {
                 name: "SUM".to_owned(),
                 args: vec![
                     Expr::Ref(Position { x: 0, y: 0 }),
-                    Expr::Value(Box::new(Num::I(52)))
+                    Expr::Value(Num::I(52).into())
                 ]
             })
         );
@@ -178,7 +177,7 @@ mod tests {
                 name: "SUM".to_owned(),
                 args: vec![
                     Expr::Ref(Position { x: 0, y: 0 }),
-                    Expr::Value(Box::new(Num::I(52)))
+                    Expr::Value(Num::I(52).into())
                 ]
             })
         );
@@ -195,7 +194,7 @@ mod tests {
                     Expr::Form(OpInfo {
                         name: "MUL".to_owned(),
                         args: vec![
-                            Expr::Value(Box::new(Num::I(5))),
+                            Expr::Value(Num::I(5).into()),
                             Expr::Ref(Position { x: 1, y: 1 })
                         ]
                     })
@@ -211,8 +210,8 @@ mod tests {
             Expr::Form(OpInfo {
                 name: "CONCAT".to_owned(),
                 args: vec![
-                    Expr::Value(Box::new("H".to_owned())),
-                    Expr::Value(Box::new("i".to_owned())),
+                    Expr::Value("H".to_owned().into()),
+                    Expr::Value("i".to_owned().into()),
                 ]
             })
         );

@@ -13,6 +13,7 @@ use serde_json::value::Value as SerdeValue;
 use std::convert::Into;
 use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
+use derive_more::Display;
 
 use self::expr::*;
 use self::{num::Num, value::Value};
@@ -39,8 +40,8 @@ impl Sheet {
     }
 }
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Display)]
+#[display(fmt = "{}{}", "x + (b'A' as usize)" , y)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -66,8 +67,7 @@ pub enum CellError {
     #[error("#ERROR: This cell references an empty field")]
     InvalidReference,
     #[error("#ERROR: This operation takes {0:?} args, but {1} were supplied")]
-    // TODO: Select a concrete Range impl and use that
-    InvalidArgCount(core::ops::Bound<usize>, usize),
+    InvalidArgCount(std::ops::RangeInclusive<usize>, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
     #[error("#ERROR: Referenced cell {0} has errors {1:?}")]
@@ -187,9 +187,9 @@ impl<'a> From<RawSheet> for Sheet {
 impl<'a> From<RawCellData> for Expr {
     fn from(value: RawCellData) -> Self {
         match value {
-            RawCellData::Int(i) => Expr::Value(Box::new(Num::I(i))),
-            RawCellData::Float(f) => Expr::Value(Box::new(Num::F(f))),
-            RawCellData::Bool(b) => Expr::Value(Box::new(b)),
+            RawCellData::Int(i) => Expr::Value(Num::I(i).into()),
+            RawCellData::Float(f) => Expr::Value(Num::F(f).into()),
+            RawCellData::Bool(b) => Expr::Value(b.into()),
             RawCellData::String(s) => match parse::parse_entry(&s[..]) {
                 Ok((_, expr)) => expr,
                 Err(_) => Expr::Err(CellError::ParseError),

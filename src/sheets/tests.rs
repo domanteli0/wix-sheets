@@ -92,7 +92,7 @@ fn parse_then_resolve_forms_with_refs() {
 }
 
 #[test]
-fn parse_then_resolve_forms_with_nested_froms_with_refs() {
+fn parse_then_resolve_forms_with_nested_forms_with_refs() {
     let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
@@ -181,7 +181,7 @@ fn parse_then_resolve_forms_with_mul() {
 }
 
 #[test]
-fn parse_then_resolve_divive() {
+fn parse_then_resolve_divide() {
     let mut ops = operators::get_default_op_map();
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
@@ -267,15 +267,15 @@ fn parse_then_resolve_with_concat() {
             id: "sheet-test".to_owned(),
             cells: vec![
                 vec![
-                    Expr::Value(Box::new(String::from("Hello"))),
-                    Expr::Value(Box::new(String::from(", "))),
-                    Expr::Value(Box::new(String::from("Hi!"))),
+                    Expr::Value("Hello".to_owned().into()),
+                    Expr::Value(", ".to_owned().into()),
+                    Expr::Value("Hi!".to_owned().into()),
                 ],
                 vec![
-                    Expr::Value(Box::new(String::from("World"))),
-                    Expr::Value(Box::new(String::from("Hello, World!"))),
-                    Expr::Value(Box::new(String::from("!"))),
-                    Expr::Value(Box::new(String::from("Hello, World!"))),
+                    Expr::Value("World".to_owned().into()),
+                    Expr::Value("Hello, World!".to_owned().into()),
+                    Expr::Value("!".to_owned().into()),
+                    Expr::Value("Hello, World!".to_owned().into()),
                 ]
             ]
         }
@@ -308,11 +308,11 @@ fn parse_then_resolve_not() {
         Sheet {
             id: "sheet-test".to_owned(),
             cells: vec![
-                vec![Expr::Value(Box::new(true)), Expr::Value(Box::new(false)),],
+                vec![Expr::Value(true.into()), Expr::Value(false.into()),],
                 vec![
-                    Expr::Value(Box::new(true)),
-                    Expr::Value(Box::new(false)),
-                    Expr::Value(Box::new(true)),
+                    Expr::Value(true.into()),
+                    Expr::Value(false.into()),
+                    Expr::Value(true.into()),
                 ]
             ]
         }
@@ -345,7 +345,7 @@ fn parse_then_resolve_gt() {
                     Expr::Value(Num::I(5).into()),
                     Expr::Value(Num::F(6.0).into())
                 ],
-                vec![Expr::Value(Box::new(false)), Expr::Value(Box::new(true)),]
+                vec![Expr::Value(false.into()), Expr::Value(true.into()),]
             ]
         }
     );
@@ -378,7 +378,7 @@ fn parse_then_resolve_eq() {
                     Expr::Value(Num::F(6.0).into())
                 ],
                 vec![
-                    Expr::Value(Box::new(true)),
+                    Expr::Value(true.into()),
                     Expr::Err(CellError::BinaryTypeMismatch),
                 ]
             ]
@@ -417,12 +417,12 @@ fn parse_then_resolve_and_not() {
                     Expr::Value(Num::F(6.0).into())
                 ],
                 vec![
-                    Expr::Value(Box::new(true)),
+                    Expr::Value(true.into()),
                     Expr::Err(CellError::BinaryTypeMismatch),
                 ],
                 vec![
-                    Expr::Value(Box::new(true)),
-                    Expr::Value(Box::new(true)),
+                    Expr::Value(true.into()),
+                    Expr::Value(true.into()),
                 ]
             ]
         }
@@ -456,8 +456,8 @@ fn parse_then_resolve_if() {
                     Expr::Value(Num::F(6.0).into())
                 ],
                 vec![
-                    Expr::Value(Box::new("Equal".to_owned())),
-                    Expr::Value(Box::new(false)),
+                    Expr::Value("Equal".to_owned().into()),
+                    Expr::Value(false.into()),
                 ],
             ]
         }
