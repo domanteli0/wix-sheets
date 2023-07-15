@@ -21,13 +21,22 @@ type VerboseResult<I, O, E> = Result<(I, O), nom::Err<VerboseError<E>>>;
 // NOTE: this parser does not consider `543` to be a float
 // anything which matches `[0-9]+\.[0-9]+` is considered to be a float
 fn parse_float(i: &str) -> VerboseResult<&str, Num, &'_ str> {
-    let num = map(digit1, |str: &str| str);
-
-    let dot_and_after = tuple((tag("."), digit1));
-
-    map(tuple((num, dot_and_after)), |(num, (_, after))| {
-        Num::F((String::from(num) + "." + after).parse().unwrap())
-    })(i)
+    map(
+        tuple((digit1, tag("."), digit1)),
+        |(num, _, after): (&str, _, _)| {
+            Num::F(
+                (unsafe {
+                    let num_ptr: *const u8 = &num.as_bytes()[0] as *const u8;
+                    std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        num_ptr,
+                        num.len() + after.len() + 1,
+                    ))
+                })
+                .parse()
+                .unwrap(),
+            )
+        },
+    )(i)
 }
 
 fn parse_int(i: &str) -> VerboseResult<&str, Num, &'_ str> {
