@@ -7,7 +7,7 @@ use nom::{
         complete::{tag, take_while_m_n},
     },
     character::complete::digit1,
-    combinator::map,
+    combinator::{map, not},
     error::VerboseError,
     multi::many0,
     sequence::{pair, tuple},
@@ -40,7 +40,9 @@ fn parse_float(i: &str) -> VerboseResult<&str, Num, &'_ str> {
 }
 
 fn parse_int(i: &str) -> VerboseResult<&str, Num, &'_ str> {
-    map(digit1, |s: &str| Num::I(s.parse().unwrap()))(i)
+    map(pair(digit1, not(tag("."))), |(s, _): (&str, _)| {
+        Num::I(s.parse().unwrap())
+    })(i)
 }
 
 fn parse_num(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
@@ -163,7 +165,10 @@ mod tests {
     fn test_num() {
         assert_eq!(("", Num::I(531).into()), parse_num("531").unwrap());
 
-        assert_eq!(("", Num::F(6.1).into()), parse_num("6.1").unwrap())
+        assert_eq!(("", Num::F(61.1).into()), parse_num("61.1").unwrap());
+
+        assert!(parse_num(".1").is_err());
+        assert!(parse_num("5.").is_err());
     }
 
     #[test]
