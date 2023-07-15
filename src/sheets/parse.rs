@@ -13,7 +13,8 @@ use nom::{
     sequence::{pair, tuple},
 };
 
-use super::{num::Num, CellError, Expr, OpInfo, Position};
+use super::{CellError, Expr, OpInfo, Position};
+use crate::types::num::Num;
 
 type VerboseResult<I, O, E> = Result<(I, O), nom::Err<VerboseError<E>>>;
 

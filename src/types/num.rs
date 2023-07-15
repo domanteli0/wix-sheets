@@ -1,10 +1,12 @@
-//! Contains number value implementation 
+//! Contains number value implementation
 
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign};
 
 use derive_more::{self, Display, From};
 
-use super::{value::Value, Expr};
+use super::value::Value;
+
+use serde_json::{value::Value as SerdeValue, Number};
 
 impl Value for Num {}
 #[derive(Debug, Clone, Copy, Display, From)]
@@ -15,16 +17,28 @@ pub enum Num {
     I(i64),
 }
 
+impl Into<SerdeValue> for Num {
+    fn into(self: Self) -> SerdeValue {
+        SerdeValue::Number(
+            Number::from_f64(match self {
+                Num::F(f) => f,
+                Num::I(i) => i as f64,
+            })
+            .unwrap(),
+        )
+    }
+}
+
 impl PartialOrd<Num> for Num {
     fn partial_cmp(&self, rhs: &Num) -> Option<std::cmp::Ordering> {
         match self {
             Num::I(i1) => match rhs {
                 Num::I(i2) => i1.partial_cmp(&i2),
-                Num::F(f2) => ( *i1 as f64 ).partial_cmp(&f2),
+                Num::F(f2) => (*i1 as f64).partial_cmp(&f2),
             },
             Num::F(f1) => match rhs {
                 Num::F(f2) => f1.partial_cmp(f2),
-                Num::I(i2) => ( *f1 ).partial_cmp(&( *i2 as f64) ),
+                Num::I(i2) => (*f1).partial_cmp(&(*i2 as f64)),
             },
         }
     }

@@ -3,6 +3,7 @@
 
 pub mod data;
 pub mod sheets;
+pub mod types;
 
 use std::{convert::Into, env, error::Error};
 

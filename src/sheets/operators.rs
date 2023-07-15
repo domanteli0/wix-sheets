@@ -1,5 +1,7 @@
 //! Contains implementations of operators
 
+use crate::types::box_value::BoxValue;
+
 use super::*;
 use std::any::TypeId;
 use std::ops::RangeInclusive;

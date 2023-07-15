@@ -1,22 +1,19 @@
 #![allow(incomplete_features)]
 
-pub mod num;
+pub mod expr;
 pub mod operators;
 pub mod parse;
 pub mod tests;
-pub mod value;
-pub mod expr;
 
-use dyn_ord::{DynEq, DynOrd};
+use derive_more::Display;
 use serde_json::map::Map as SerdeMap;
 use serde_json::value::Value as SerdeValue;
 use std::convert::Into;
 use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
-use derive_more::Display;
 
 use self::expr::*;
-use self::{num::Num, value::Value};
+use crate::{types::num::Num, types::value::Value};
 use crate::data::{RawCellData, RawSheet};
 
 /// Contains all cells of a sheet
@@ -41,7 +38,7 @@ impl Sheet {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Display)]
-#[display(fmt = "{}{}", "x + (b'A' as usize)" , y)]
+#[display(fmt = "{}{}", "x + (b'A' as usize)", y)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -130,7 +127,6 @@ impl Sheet {
     }
 }
 
-
 impl OpInfo {
     // after this is called `self` should only contain
     // `Expr`s which are either `Err` or `Value`
@@ -154,8 +150,7 @@ impl OpInfo {
                 Expr::Form(op_info) => {
                     op_info.resolve_with_sheet(sheet, ops);
 
-                    ops
-                        .get_mut(&op_info.name[..])
+                    ops.get_mut(&op_info.name[..])
                         .map(|o| o(sheet, op_info))
                         .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
                 }
@@ -201,9 +196,6 @@ impl<'a> From<RawCellData> for Expr {
 /// This impl is used for serialization
 impl Into<SerdeValue> for Sheet {
     fn into(self) -> SerdeValue {
-        let mut map: SerdeMap<String, SerdeValue> = SerdeMap::new();
-        map.insert("id".to_string(), SerdeValue::String(self.id.clone()));
-
         let data = self
             .cells
             .iter()
@@ -215,9 +207,10 @@ impl Into<SerdeValue> for Sheet {
                 )
             })
             .collect::<Vec<_>>();
-        let data = SerdeValue::Array(data);
-        map.insert("data".to_owned(), data);
 
-        SerdeValue::Object(map)
+        SerdeValue::Object(SerdeMap::from_iter([
+            ("id".to_owned(), SerdeValue::String(self.id.clone())),
+            ("data".to_owned(), SerdeValue::Array(data)),
+        ]))
     }
 }

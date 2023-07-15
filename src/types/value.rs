@@ -7,10 +7,14 @@ use dyn_clone::DynClone;
 use dyn_eq::DynEq;
 use dyn_ord;
 
+use super::into_serde_value::IntoSerdeValue;
+
 #[dyn_clonable::clonable]
 /// This trait is implemented for any type which can be used as a value in a cell
 pub trait Value:
-    Any + Debug + Display + DynClone + DynEq + dyn_ord::DynOrd + Clone + Downcast { }
+    Any + Debug + Display + DynClone + DynEq + dyn_ord::DynOrd + Clone + Downcast + IntoSerdeValue
+{
+}
 impl_downcast!(Value);
 
 impl From<&str> for Box<dyn Value> {
