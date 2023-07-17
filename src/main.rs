@@ -1,5 +1,6 @@
 #![feature(trait_upcasting)]
 #![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 
 pub mod data;
 pub mod sheets;
@@ -38,13 +39,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let url = data_raw.submission_url.clone();
 
     // parse & compute fields
-    let mut data: Vec<Sheet> = data_raw.sheets.into_iter().map(Into::<_>::into).collect();
+    let data: Vec<Sheet> = data_raw.sheets.into_iter().map(Into::<_>::into).collect();
 
     let mut ops = wix_sheets::sheets::operators::get_default_op_map();
 
-    for s in &mut data {
-        s.resolve_refs(&mut ops);
-    }
+    let data = data.into_iter().map(|s| s.resolve_refs(&mut ops)).collect::<Vec<_>>();
 
     // serialize and send
     let mut results = Results {

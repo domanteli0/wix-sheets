@@ -13,8 +13,8 @@ use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 
 use self::expr::*;
-use crate::{types::num::Num, types::value::Value};
 use crate::data::{RawCellData, RawSheet};
+use crate::{types::num::Num, types::value::Value};
 
 /// Contains all cells of a sheet
 #[derive(Debug, Clone, PartialEq)]
@@ -69,9 +69,11 @@ pub enum CellError {
     NoOpFound(String),
     #[error("#ERROR: Referenced cell {0} has errors {1:?}")]
     RefError(Box<CellError>, Position),
+    #[error("{0} [problem with an argument at position: {1}]")]
+    ArgError(usize, Box<CellError>),
     #[error("#ERROR: These errors have occurred in this formula: {0:?}")]
     // usize - which arg, CellError - what type of error
-    FormError(Vec<(usize, CellError)>),
+    FormError(Vec<CellError>),
     #[error("#ERROR: Division by zero")]
     DivByZero,
 }
@@ -90,14 +92,20 @@ impl Sheet {
     // TODO: in case of reference cycles this implementation will cycle till the stack blows up, fix this
     /// Computes all fields, i.e. turns all values into constant values
     /// by computing formulas
-    pub fn resolve_refs(&mut self, ops: &mut HashMap<&'static str, operators::Operator>) {
-        for iy in 0..self.cells.len() {
-            for jx in 0..self.cells[iy].len() {
-                self.resolve_on_pos((jx, iy).into(), ops);
+    pub fn resolve_refs(mut self, ops: &mut HashMap<&'static str, operators::Operator>) -> Self {
+        for iy in 0..(&self).cells.len() {
+            for jx in 0..(&self).cells[iy].len() {
+                (&mut self).resolve_on_pos((jx, iy).into(), ops);
             }
         }
+        self
     }
 
+    // TODO: move `resolve_on_pos` to `resolve_refs`
+    // in order to avoid passing `&mut self` around
+    // this will enable to copy less data and
+    // possibly get around using recursion
+    // thus removing the possibility of a stack overflow
     fn resolve_on_pos(
         &mut self,
         pos: Position,
@@ -115,7 +123,10 @@ impl Sheet {
                 op_info.resolve_with_sheet(self, ops);
 
                 ops.get_mut(&op_info.name[..])
-                    .map(|o| o(self, &mut op_info))
+                    .map(|o| match o(self, &mut op_info) {
+                        Ok(e) => e.into(),
+                        Err(ve) => Expr::Err(CellError::FormError(ve)),
+                    })
                     .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
             }
             Expr::Value(v) => v.into(),
@@ -151,7 +162,10 @@ impl OpInfo {
                     op_info.resolve_with_sheet(sheet, ops);
 
                     ops.get_mut(&op_info.name[..])
-                        .map(|o| o(sheet, op_info))
+                        .map(|o| match o(sheet, op_info) {
+                            Ok(e) => e.into(),
+                            Err(ve) => Expr::Err(CellError::FormError(ve)),
+                        })
                         .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
                 }
                 _ => unreachable!(),
