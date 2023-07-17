@@ -61,21 +61,37 @@ pub enum CellError {
     TypeMismatch(&'static str),
     #[error("#ERROR: Incompatible types")]
     BinaryTypeMismatch,
-    #[error("#ERROR: This cell references an empty field")]
-    InvalidReference,
+    #[error("#ERROR: This cell references non existent cell {0}")]
+    InvalidReference(Position),
     #[error("#ERROR: This operation takes {0:?} args, but {1} were supplied")]
     InvalidArgCount(std::ops::RangeInclusive<usize>, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
     NoOpFound(String),
-    #[error("#ERROR: Referenced cell {0} has errors {1:?}")]
+    // On second thought copying the error might not be the best idea
+    // as long reference chains could introduce a lot of copies
+    #[error("#ERROR: Referenced cell {1:?} has errors [{0:?}]")]
     RefError(Box<CellError>, Position),
-    #[error("{0} [problem with an argument at position: {1}]")]
+    #[error("{0} [problem with a referenced cell]")]
     ArgError(usize, Box<CellError>),
     #[error("#ERROR: These errors have occurred in this formula: {0:?}")]
     // usize - which arg, CellError - what type of error
     FormError(Vec<CellError>),
     #[error("#ERROR: Division by zero")]
     DivByZero,
+    #[error("#ERROR: reference cycle(s) detected {0:?}")]
+    RefCycle(Vec<RefCycle>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefCycle(Vec<Position>);
+
+#[derive(Debug, Clone)]
+pub struct ErrorWithOrigin(Position, CellError);
+
+impl From<(Position, CellError)> for ErrorWithOrigin {
+    fn from(value: (Position, CellError)) -> ErrorWithOrigin {
+        ErrorWithOrigin(value.0, value.1)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,15 +111,77 @@ impl Sheet {
     pub fn resolve_refs(mut self, ops: &mut HashMap<&'static str, operators::Operator>) -> Self {
         for iy in 0..(&self).cells.len() {
             for jx in 0..(&self).cells[iy].len() {
+                (&mut self).cycles_on_pos((jx, iy).into(), &mut vec![]);
+            }
+        }
+
+        println!("SELF: {:?}", self);
+
+        for iy in 0..(&self).cells.len() {
+            for jx in 0..(&self).cells[iy].len() {
                 (&mut self).resolve_on_pos((jx, iy).into(), ops);
             }
         }
         self
     }
 
+    // This could be improved, as an operator can introduce
+    // multiple reference cycles, but only one will be reported
+    // because as soon as one cycle is detected it is immediately
+    // converted to an error and further cycles will be interrupted by this error
+    // thus propagating it through other cycles by `RefError`
+    fn cycles_on_pos(&mut self, pos: Position, origin: &mut Vec<Position>) -> Vec<RefCycle> {
+        if origin.contains(&pos) {
+            return vec!(RefCycle(origin.clone()));
+        } else {
+            origin.push(pos);
+        }
+
+        // return `None` if `pos` refers to a non-existent cell
+        let expr: &Expr = {
+            let temp = self.get(pos);
+            if temp.is_none() { return vec![]; }
+            temp.unwrap()
+        };
+        
+        let mut err = None;
+
+        let new_expr: Expr = match expr.clone() {
+            Expr::Ref(r) => {
+                let cycle_err = self.cycles_on_pos(r, origin);
+                if cycle_err.len() > 0  {
+                    err = Some(cycle_err.clone());
+                    Expr::Err(CellError::RefCycle(vec![RefCycle(cycle_err)]))
+                } else {
+                    Expr::Ref(r)
+                }
+            }
+            Expr::Form(mut op_info) => {
+                let mut errs = vec![];
+                for arg_ref in &mut op_info.args {
+                    if !arg_ref.is_ref() {
+                        continue;
+                    }
+                    let arg_ref = arg_ref.unwrap_ref_ref();
+
+                    if let Some(cycle_err) = self.cycles_on_pos(*arg_ref, &mut origin.clone()) {
+                        errs.push(cycle_err)
+                    }
+                }
+                // todo!()
+                Expr::Form(op_info)
+            }
+            Expr::Value(v) => v.into(),
+            Expr::Err(e) => e.into(),
+        };
+
+        self.set_unchecked(pos, new_expr);
+        err
+    }
+
     // TODO: move `resolve_on_pos` to `resolve_refs`
     // in order to avoid passing `&mut self` around
-    // this will enable to copy less data and
+    // this might enable to copy less data and
     // possibly get around using recursion
     // thus removing the possibility of a stack overflow
     fn resolve_on_pos(
@@ -111,26 +189,31 @@ impl Sheet {
         pos: Position,
         ops: &mut HashMap<&'static str, operators::Operator>,
     ) -> Option<&Expr> {
+        // return `None` if `pos` refers to a non-existent cell
         let expr = self.get(pos)?;
-
         let new_expr: Expr = match expr.clone() {
             Expr::Ref(r) => self
                 .resolve_on_pos(r, ops)
-                .map(|e| e)
-                .unwrap_or(&Expr::Err(CellError::InvalidReference))
-                .clone(),
+                .map(|e| {
+                    if e.is_err() {
+                        Expr::Err(CellError::RefError(Box::new(e.clone().unwrap_err()), r))
+                    } else {
+                        e.clone()
+                    }
+                })
+                .unwrap_or(Expr::Err(CellError::InvalidReference(r))),
             Expr::Form(mut op_info) => {
                 op_info.resolve_with_sheet(self, ops);
 
                 ops.get_mut(&op_info.name[..])
-                    .map(|o| match o(self, &mut op_info) {
+                    .map(|o| match o(&mut op_info) {
                         Ok(e) => e.into(),
                         Err(ve) => Expr::Err(CellError::FormError(ve)),
                     })
                     .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
             }
             Expr::Value(v) => v.into(),
-            Expr::Err(e) => Expr::Err(CellError::RefError(Box::new(e), Position { x: 0, y: 0 })),
+            Expr::Err(e) => Expr::Err(e),
         };
 
         self.set_unchecked(pos, new_expr);
@@ -156,13 +239,13 @@ impl OpInfo {
                 Expr::Ref(r) => sheet
                     .resolve_on_pos(*r, ops)
                     .map(|e| e)
-                    .unwrap_or(&Expr::Err(CellError::InvalidReference))
+                    .unwrap_or(&Expr::Err(CellError::InvalidReference(*r)))
                     .clone(),
                 Expr::Form(op_info) => {
                     op_info.resolve_with_sheet(sheet, ops);
 
                     ops.get_mut(&op_info.name[..])
-                        .map(|o| match o(sheet, op_info) {
+                        .map(|o| match o(op_info) {
                             Ok(e) => e.into(),
                             Err(ve) => Expr::Err(CellError::FormError(ve)),
                         })

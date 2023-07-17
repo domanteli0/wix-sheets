@@ -5,6 +5,8 @@ use crate::types::box_value::BoxValue;
 use super::*;
 use std::ops::RangeInclusive;
 
+/// A Type designed to handle type conversions (and errors when converting them)
+/// and handle'ing arity of operators
 #[derive(Debug)]
 struct MyHandler<T> {
     err_state: Vec<CellError>,
@@ -12,6 +14,9 @@ struct MyHandler<T> {
     inner: T,
 }
 
+// helper function
+// finds all type downcasting errors within specified range
+// NOTE: it does not handle argument arity
 fn find_type_errors<'a, T: Value + Clone>(
     info: &'a OpInfo,
     range: RangeInclusive<usize>,
@@ -165,10 +170,10 @@ impl<T> MyHandler<T> {
 }
 
 const MAX_ARGS: usize = u32::MAX as usize;
-pub type Operator = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Result<Expr, Vec<CellError>>>;
+pub type Operator = Box<dyn Fn(&mut OpInfo) -> Result<Expr, Vec<CellError>>>;
 
 pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
-    let sum: Operator = Box::new(|_, info: &mut OpInfo| {
+    let sum: Operator = Box::new(|info: &mut OpInfo| {
         Ok(MyHandler::<()>::new(info.clone())
             .handle_type_variadic::<Num>(0..=MAX_ARGS, "Num")?
             .finish()
@@ -178,7 +183,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             .into())
     });
 
-    let mul: Operator = Box::new(|_, info| {
+    let mul: Operator = Box::new(|info| {
         Ok(MyHandler::<()>::new(info.clone())
             .handle_type_variadic::<Num>(0..=MAX_ARGS, "Num")?
             .finish()
@@ -188,7 +193,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             .into())
     });
 
-    let div: Operator = Box::new(|_, info| {
+    let div: Operator = Box::new(|info| {
         let [l, r] = MyHandler::<()>::new(info.clone())
             .handle_type_const::<Num, 0, 1>("Num")?
             .finish()
@@ -201,7 +206,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         }
     });
 
-    let gt: Operator = Box::new(|_, info| {
+    let gt: Operator = Box::new(|info| {
         let [l, r] = MyHandler::<()>::new(info.clone())
             .handle_const::<0, 1>()?
             .finish()
@@ -213,7 +218,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         }
     });
 
-    let eq: Operator = Box::new(|_, info| {
+    let eq: Operator = Box::new(|info| {
         let [l, r] = MyHandler::<()>::new(info.clone())
             .handle_const::<0, 1>()?
             .finish()
@@ -226,7 +231,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         }
     });
 
-    let not: Operator = Box::new(|_, info| {
+    let not: Operator = Box::new(|info| {
         Ok({
             let bool = MyHandler::<()>::new(info.clone())
                 .handle_type_const::<bool, 0, 0>("Boolean")?
@@ -237,7 +242,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         })
     });
 
-    let and: Operator = Box::new(|_, info: &mut OpInfo| {
+    let and: Operator = Box::new(|info: &mut OpInfo| {
         Ok(MyHandler::<()>::new(info.clone())
             .handle_type_variadic::<bool>(0..=MAX_ARGS, "Boolean")?
             .finish()
@@ -247,7 +252,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             .into())
     });
 
-    let or: Operator = Box::new(|_, info: &mut OpInfo| {
+    let or: Operator = Box::new(|info: &mut OpInfo| {
         Ok(MyHandler::<()>::new(info.clone())
             .handle_type_variadic::<bool>(0..=MAX_ARGS, "Boolean")?
             .finish()
@@ -257,7 +262,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
             .into())
     });
 
-    let r#if: Operator = Box::new(|_, info| {
+    let r#if: Operator = Box::new(|info| {
         let ([arg1, arg2], ([cond], ())) = MyHandler::<()>::new(info.clone())
             .handle_type_const::<bool, 0, 0>("Boolean")?
             .handle_const::<1, 2>()?
@@ -272,7 +277,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
         })
     });
 
-    let concat: Operator = Box::new(|_, info| {
+    let concat: Operator = Box::new(|info| {
         Ok(MyHandler::<()>::new(info.clone())
             .handle_type_variadic::<String>(0..=MAX_ARGS, "String")?
             .finish()

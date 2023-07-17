@@ -38,7 +38,7 @@ fn parse_then_resolve_with_refs() {
                     Num::I(6).into(),
                     Num::I(6).into(),
                 ],
-                vec![Num::I(6).into(), CellError::InvalidReference.into(),]
+                vec![Num::I(6).into(), CellError::InvalidReference((2, 1).into()).into(),]
             ]
         }
     )
@@ -141,7 +141,7 @@ fn parse_then_resolve_fn_with_errs() {
         Sheet {
             id: "sheet-test".to_owned(),
             cells: vec![vec![CellError::FormError(vec![
-                CellError::ArgError(1, Box::new(CellError::InvalidReference)),
+                CellError::ArgError(1, Box::new(CellError::InvalidReference((0, 1).into()))),
                 CellError::ArgError(2, Box::new(CellError::TypeMismatch("Num"))),
             ])
             .into()]]
@@ -464,3 +464,42 @@ fn parse_then_resolve_if() {
     );
 }
 
+#[test]
+fn ref_cycles_simple() {
+    let mut ops = operators::get_default_op_map();
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
+            vec![
+                RawCellData::String("=B1".to_owned()),
+                RawCellData::String("=A1".to_owned()),
+            ],
+            vec![
+                RawCellData::String("=B1".to_owned()),
+                RawCellData::String("=A1".to_owned()),
+            ],
+        ],
+    };
+
+    let sheet: Sheet = raw.into();
+    let sheet = sheet.resolve_refs(&mut ops);
+
+    let cycle_error = CellError::RefCycle(vec![(0, 0).into(), (1, 0).into()]);
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Err(cycle_error.clone()),
+                    Expr::Err(cycle_error.clone()),
+                ],
+                vec![
+                    Expr::Err(CellError::RefError(Box::new(cycle_error.clone()), (1, 0).into())),
+                    Expr::Err(CellError::RefError(Box::new(cycle_error.clone()), (0, 0).into())),
+                ],
+            ]
+        }
+    );
+}

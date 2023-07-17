@@ -61,6 +61,13 @@ impl Expr {
         }
     }
 
+    pub fn unwrap_ref_ref(&self) -> &Position {
+        match self {
+            Expr::Ref(r) => r,
+            _ => panic!("unwrap_ref on a Expr with is not Ref")
+        }
+    }
+
     pub fn map_value_mut(&mut self, f: impl FnOnce(&mut BoxValue)) {
         match self {
             Expr::Value(v) => f(v),

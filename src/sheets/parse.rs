@@ -63,7 +63,7 @@ fn parse_ref(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
             y: y,
         };
         if pos.y == 0 {
-            CellError::InvalidReference.into()
+            CellError::ParseError.into()
         } else {
             Expr::Ref(Position {
                 y: pos.y - 1,
