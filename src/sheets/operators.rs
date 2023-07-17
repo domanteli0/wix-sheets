@@ -5,6 +5,8 @@ use crate::types::box_value::BoxValue;
 use super::*;
 use std::ops::RangeInclusive;
 
+/// A Type designed to handle type conversions (and errors when converting them)
+/// and handle'ing arity of operators
 #[derive(Debug)]
 struct MyHandler<T> {
     err_state: Vec<CellError>,
@@ -12,6 +14,9 @@ struct MyHandler<T> {
     inner: T,
 }
 
+// helper function
+// finds all type downcasting errors within specified range
+// NOTE: it does not handle argument arity
 fn find_type_errors<'a, T: Value + Clone>(
     info: &'a OpInfo,
     range: RangeInclusive<usize>,
@@ -24,12 +29,14 @@ fn find_type_errors<'a, T: Value + Clone>(
         .take(*range.end())
         .filter(|(_, e)| !e.is_err())
         .map(|(u, e): (_, &Expr)| {
-            (u, {
-                let e: Expr = e.clone();
-                let b: Box<dyn Value> = e.unwrap_value().move_inner();
-                let b: Option<T> = b.downcast_ref::<T>().map(|v: &T| -> T { v.clone() });
-                b
-            })
+            (
+                u,
+                e.clone()
+                    .unwrap_value()
+                    .move_inner()
+                    .downcast_ref::<T>()
+                    .map(|v: &T| v.clone()),
+            )
         })
         .filter(|(_, e)| e.is_none())
         .map(move |(u, _)| CellError::ArgError(u, Box::new(CellError::TypeMismatch(type_name))))
