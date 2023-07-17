@@ -38,7 +38,7 @@ fn parse_then_resolve_with_refs() {
                     Num::I(6).into(),
                     Num::I(6).into(),
                 ],
-                vec![Num::I(6).into(), CellError::InvalidReference.into(),]
+                vec![Num::I(6).into(), CellError::InvalidReference((2, 1).into()).into(),]
             ]
         }
     )
@@ -141,7 +141,7 @@ fn parse_then_resolve_fn_with_errs() {
         Sheet {
             id: "sheet-test".to_owned(),
             cells: vec![vec![CellError::FormError(vec![
-                CellError::ArgError(1, Box::new(CellError::InvalidReference)),
+                CellError::ArgError(1, Box::new(CellError::InvalidReference((0, 1).into()))),
                 CellError::ArgError(2, Box::new(CellError::TypeMismatch("Num"))),
             ])
             .into()]]

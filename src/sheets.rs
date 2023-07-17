@@ -61,8 +61,8 @@ pub enum CellError {
     TypeMismatch(&'static str),
     #[error("#ERROR: Incompatible types")]
     BinaryTypeMismatch,
-    #[error("#ERROR: This cell references an empty field")]
-    InvalidReference,
+    #[error("#ERROR: This cell references non-existent cell at {0}")]
+    InvalidReference(Position),
     #[error("#ERROR: This operation takes {0:?} args, but {1} were supplied")]
     InvalidArgCount(std::ops::RangeInclusive<usize>, usize),
     #[error("#ERROR: Could not find an operation named {0}")]
@@ -116,9 +116,14 @@ impl Sheet {
         let new_expr: Expr = match expr.clone() {
             Expr::Ref(r) => self
                 .resolve_on_pos(r, ops)
-                .map(|e| e)
-                .unwrap_or(&Expr::Err(CellError::InvalidReference))
-                .clone(),
+                .map(|e| {
+                    if e.is_err() {
+                        Expr::Err(CellError::RefError(Box::new(e.clone().unwrap_err()), r))
+                    } else {
+                        e.clone()
+                    }
+                })
+                .unwrap_or(Expr::Err(CellError::InvalidReference(r))),
             Expr::Form(mut op_info) => {
                 op_info.resolve_with_sheet(self, ops);
 
@@ -155,9 +160,14 @@ impl OpInfo {
             let e_ = match e {
                 Expr::Ref(r) => sheet
                     .resolve_on_pos(*r, ops)
-                    .map(|e| e)
-                    .unwrap_or(&Expr::Err(CellError::InvalidReference))
-                    .clone(),
+                    .map(|e| {
+                        if e.is_err() {
+                            Expr::Err(CellError::RefError(Box::new(e.clone().unwrap_err()), *r))
+                        } else {
+                            e.clone()
+                        }
+                    })
+                    .unwrap_or(Expr::Err(CellError::InvalidReference(*r))),
                 Expr::Form(op_info) => {
                     op_info.resolve_with_sheet(sheet, ops);
 
