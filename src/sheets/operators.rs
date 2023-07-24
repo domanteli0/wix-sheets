@@ -42,7 +42,7 @@ fn find_type_errors<'a, T: Value + Clone>(
         .map(move |(u, _)| CellError::ArgError(u, Box::new(CellError::TypeMismatch(type_name))))
 }
 
-impl<T> MyHandler<T> {
+impl MyHandler<()> {
     fn new(op_info: OpInfo) -> MyHandler<()> {
         MyHandler {
             err_state: op_info
@@ -56,7 +56,9 @@ impl<T> MyHandler<T> {
             op_info,
         }
     }
+}
 
+impl<T> MyHandler<T> {
     /// Checks if constant amount of arguments exist within the `L..=U` range
     ///
     /// If you want to also check if the underlying types within the `Expr`
@@ -176,7 +178,7 @@ pub type Operator = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Result<Expr, Vec<Cell
 
 pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     let sum: Operator = Box::new(|_, info: &mut OpInfo| {
-        Ok(MyHandler::<()>::new(info.clone())
+        Ok(MyHandler::new(info.clone())
             .handle_type_variadic::<Num>(0..=MAX_ARGS, "Num")?
             .finish()
             .0
@@ -186,7 +188,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let mul: Operator = Box::new(|_, info| {
-        Ok(MyHandler::<()>::new(info.clone())
+        Ok(MyHandler::new(info.clone())
             .handle_type_variadic::<Num>(0..=MAX_ARGS, "Num")?
             .finish()
             .0
@@ -196,7 +198,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let div: Operator = Box::new(|_, info| {
-        let [l, r] = MyHandler::<()>::new(info.clone())
+        let [l, r] = MyHandler::new(info.clone())
             .handle_type_const::<Num, 0, 1>("Num")?
             .finish()
             .0;
@@ -209,7 +211,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let gt: Operator = Box::new(|_, info| {
-        let [l, r] = MyHandler::<()>::new(info.clone())
+        let [l, r] = MyHandler::new(info.clone())
             .handle_const::<0, 1>()?
             .finish()
             .0;
@@ -221,7 +223,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let eq: Operator = Box::new(|_, info| {
-        let [l, r] = MyHandler::<()>::new(info.clone())
+        let [l, r] = MyHandler::new(info.clone())
             .handle_const::<0, 1>()?
             .finish()
             .0;
@@ -235,7 +237,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
 
     let not: Operator = Box::new(|_, info| {
         Ok({
-            let bool = MyHandler::<()>::new(info.clone())
+            let bool = MyHandler::new(info.clone())
                 .handle_type_const::<bool, 0, 0>("Boolean")?
                 .finish()
                 .0[0];
@@ -245,7 +247,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let and: Operator = Box::new(|_, info: &mut OpInfo| {
-        Ok(MyHandler::<()>::new(info.clone())
+        Ok(MyHandler::new(info.clone())
             .handle_type_variadic::<bool>(0..=MAX_ARGS, "Boolean")?
             .finish()
             .0
@@ -255,7 +257,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let or: Operator = Box::new(|_, info: &mut OpInfo| {
-        Ok(MyHandler::<()>::new(info.clone())
+        Ok(MyHandler::new(info.clone())
             .handle_type_variadic::<bool>(0..=MAX_ARGS, "Boolean")?
             .finish()
             .0
@@ -265,7 +267,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let r#if: Operator = Box::new(|_, info| {
-        let ([arg1, arg2], ([cond], ())) = MyHandler::<()>::new(info.clone())
+        let ([arg1, arg2], ([cond], ())) = MyHandler::new(info.clone())
             .handle_type_const::<bool, 0, 0>("Boolean")?
             .handle_const::<1, 2>()?
             .finish();
@@ -280,7 +282,7 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
     });
 
     let concat: Operator = Box::new(|_, info| {
-        Ok(MyHandler::<()>::new(info.clone())
+        Ok(MyHandler::new(info.clone())
             .handle_type_variadic::<String>(0..=MAX_ARGS, "String")?
             .finish()
             .0
