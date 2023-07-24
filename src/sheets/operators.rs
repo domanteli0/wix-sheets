@@ -237,10 +237,10 @@ pub fn get_default_op_map<'a>() -> HashMap<&'a str, Operator> {
 
     let not: Operator = Box::new(|_, info| {
         Ok({
-            let bool = MyHandler::new(info.clone())
+            let [bool] = MyHandler::new(info.clone())
                 .handle_type_const::<bool, 0, 0>("Boolean")?
                 .finish()
-                .0[0];
+                .0;
 
             (!bool).into()
         })
