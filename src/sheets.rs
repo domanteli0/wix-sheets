@@ -76,6 +76,8 @@ pub enum CellError {
     FormError(Vec<CellError>),
     #[error("#ERROR: Division by zero")]
     DivByZero,
+    #[error("#ERROR: ref error")]
+    CircularRef,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,7 +97,7 @@ impl Sheet {
     pub fn resolve_refs(mut self, ops: &mut HashMap<&'static str, operators::Operator>) -> Self {
         for iy in 0..(&self).cells.len() {
             for jx in 0..(&self).cells[iy].len() {
-                (&mut self).resolve_on_pos((jx, iy).into(), ops);
+                (&mut self).resolve_on_pos((jx, iy).into(), (jx, iy).into(), ops);
             }
         }
         self
@@ -109,23 +111,35 @@ impl Sheet {
     fn resolve_on_pos(
         &mut self,
         pos: Position,
+        origin: Position,
         ops: &mut HashMap<&'static str, operators::Operator>,
     ) -> Option<&Expr> {
         let expr = self.get(pos)?;
 
         let new_expr: Expr = match expr.clone() {
-            Expr::Ref(r) => self
-                .resolve_on_pos(r, ops)
-                .map(|e| {
-                    if e.is_err() {
-                        Expr::Err(CellError::RefError(Box::new(e.clone().unwrap_err()), r))
-                    } else {
-                        e.clone()
-                    }
-                })
-                .unwrap_or(Expr::Err(CellError::InvalidReference(r))),
+            Expr::Ref(r) => {
+                if r == origin {
+                    Expr::Err(CellError::CircularRef)
+                } else {
+                    self.resolve_on_pos(r, origin, ops)
+                        .map(|e| {
+                            if e.is_err() {
+                                let e = e.unwrap_err_ref();
+
+                                if let CellError::CircularRef = e {
+                                    Expr::Err(CellError::CircularRef)
+                                } else {
+                                    Expr::Err(CellError::RefError(Box::new(e.clone()), r))
+                                }
+                            } else {
+                                e.clone()
+                            }
+                        })
+                        .unwrap_or(Expr::Err(CellError::InvalidReference(r)))
+                }
+            }
             Expr::Form(mut op_info) => {
-                op_info.resolve_with_sheet(self, ops);
+                op_info.resolve_with_sheet(self, origin, ops);
 
                 ops.get_mut(&op_info.name[..])
                     .map(|o| match o(self, &mut op_info) {
@@ -135,7 +149,7 @@ impl Sheet {
                     .unwrap_or(CellError::NoOpFound(op_info.name.clone()).into())
             }
             Expr::Value(v) => v.into(),
-            Expr::Err(e) => Expr::Err(CellError::RefError(Box::new(e), Position { x: 0, y: 0 })),
+            Expr::Err(e) => Expr::Err(e),
         };
 
         self.set_unchecked(pos, new_expr);
@@ -149,6 +163,7 @@ impl OpInfo {
     fn resolve_with_sheet(
         &mut self,
         sheet: &mut Sheet,
+        origin: Position,
         ops: &mut HashMap<&'static str, operators::Operator>,
     ) {
         let mut self_ = self.clone();
@@ -158,18 +173,30 @@ impl OpInfo {
             }
 
             let e_ = match e {
-                Expr::Ref(r) => sheet
-                    .resolve_on_pos(*r, ops)
-                    .map(|e| {
-                        if e.is_err() {
-                            Expr::Err(CellError::RefError(Box::new(e.clone().unwrap_err()), *r))
-                        } else {
-                            e.clone()
-                        }
-                    })
-                    .unwrap_or(Expr::Err(CellError::InvalidReference(*r))),
+                Expr::Ref(r) => {
+                    let r = *r;
+                    if r == origin {
+                        Expr::Err(CellError::CircularRef)
+                    } else {
+                        sheet.resolve_on_pos(r, origin, ops)
+                            .map(|e| {
+                                if e.is_err() {
+                                    let e = e.unwrap_err_ref();
+
+                                    if let CellError::CircularRef = e {
+                                        Expr::Err(CellError::CircularRef)
+                                    } else {
+                                        Expr::Err(CellError::RefError(Box::new(e.clone()), r))
+                                    }
+                                } else {
+                                    e.clone()
+                                }
+                            })
+                            .unwrap_or(Expr::Err(CellError::InvalidReference(r)))
+                    }
+                }
                 Expr::Form(op_info) => {
-                    op_info.resolve_with_sheet(sheet, ops);
+                    op_info.resolve_with_sheet(sheet, origin, ops);
 
                     ops.get_mut(&op_info.name[..])
                         .map(|o| match o(sheet, op_info) {

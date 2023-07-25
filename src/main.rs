@@ -14,7 +14,7 @@ use serde_json;
 use wix_sheets::{data::RawData, sheets::Sheet};
 
 const HUB_URL_GET: &'static str =
-    "https://www.wix.com/_serverless/hiring-task-spreadsheet-evaluator/sheets";
+    "https://www.wix.com/_serverless/hiring-task-spreadsheet-evaluator/sheets?tag=circular_reference";
 
 struct Results {
     email: String,

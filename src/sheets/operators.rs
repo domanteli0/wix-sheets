@@ -14,6 +14,7 @@ struct MyHandler<T> {
     inner: T,
 }
 
+
 // helper function
 // finds all type downcasting errors within specified range
 // NOTE: it does not handle argument arity
@@ -172,6 +173,9 @@ impl<T> MyHandler<T> {
         self.inner
     }
 }
+
+// ()
+// (Vec<Num>, ())
 
 const MAX_ARGS: usize = u32::MAX as usize;
 pub type Operator = Box<dyn Fn(&mut Sheet, &mut OpInfo) -> Result<Expr, Vec<CellError>>>;

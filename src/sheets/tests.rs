@@ -435,6 +435,40 @@ fn parse_then_resolve_if() {
     let raw = RawSheet {
         id: "sheet-test".to_owned(),
         data: vec![
+            vec![
+                RawCellData::String("=C1".to_owned()),
+                RawCellData::String("=A1".to_owned()),
+                RawCellData::String("=B1".to_owned()),
+                
+            ],
+        ],
+    };
+
+    let sheet: Sheet = raw.into();
+    let sheet = sheet.resolve_refs(&mut ops);
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            id: "sheet-test".to_owned(),
+            cells: vec![
+                vec![
+                    Expr::Err(CellError::CircularRef),
+                    Expr::Err(CellError::CircularRef),
+                    Expr::Err(CellError::CircularRef),
+                ],
+            ]
+        }
+    );
+}
+
+
+#[test]
+fn parse_then_resolve_circular_ref() {
+    let mut ops = operators::get_default_op_map();
+    let raw = RawSheet {
+        id: "sheet-test".to_owned(),
+        data: vec![
             vec![RawCellData::Int(6), RawCellData::Float(6.0)],
             vec![
                 RawCellData::String("=IF(EQ(A1, B1), \"Equal\", \"Not equal\")".to_owned()),
@@ -463,4 +497,3 @@ fn parse_then_resolve_if() {
         }
     );
 }
-

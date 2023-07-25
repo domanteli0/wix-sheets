@@ -100,7 +100,10 @@ fn parse_fn(i: &str) -> VerboseResult<&str, Expr, &'_ str> {
 
     let args = map(
         tuple((
-            pair(tag("("), take_while(|c| c == ' ')),
+            pair(
+                tag("("), 
+                take_while(|c| c == ' ')
+            ),
             many0(list_elem),
             tag(")"),
         )),
